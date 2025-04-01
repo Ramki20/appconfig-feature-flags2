@@ -111,14 +111,26 @@ pipeline {
                 }
             }
         }
-        
-        stage('Terraform Plan') {
-            steps {
-                dir('terraform') {
-                    sh 'terraform plan -var-file=terraform.tfvars.json -out=tfplan'
-                }
-            }
-        }
+
+		stage('Terraform Plan') {
+		    steps {
+		        dir('terraform') {
+		            sh 'terraform plan -var-file=terraform.tfvars.json -out=tfplan'
+		            
+		            // Import existing resources
+		            sh '''
+		                # Try to import existing resources, but don't fail if they don't exist
+		                terraform import 'aws_appconfig_application.feature_flags_app["0"]' i3v21si || true
+		                terraform import 'aws_appconfig_configuration_profile.feature_flags_profile["0"]' tjl3tr6:i3v21si || true
+		                terraform import 'aws_appconfig_environment.feature_flags_env["0"]' 8qt5plf:i3v21si || true
+		                terraform import 'aws_appconfig_deployment_strategy.quick_deployment' 3sflhh5 || true
+		                
+		                # Run plan again after imports
+		                terraform plan -var-file=terraform.tfvars.json -out=tfplan
+		            '''
+		        }
+		    }
+		}        
         
         stage('Terraform Apply') {
             steps {
