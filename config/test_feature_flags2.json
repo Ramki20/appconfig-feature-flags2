@@ -45,7 +45,18 @@
                     }
                 }
             }
-        }
+        },
+		"specific_ids" : {
+		    "name" : "specific_ids",
+		    "attributes" : {
+		        "allowed_ids" : {
+		            "constraints" : {
+		                "type" : "array",
+		                "required" : true
+		            }
+		        }
+		    }
+		}
     },
     "values" : {
         "scotts_testing_fee" : {
@@ -79,7 +90,11 @@
         "specific_states" : {
             "enabled" : "true",
             "allowed_states" : ["01", "02", "03", "04", "05"]
-        }
+        },
+		"specific_ids" : {
+		    "enabled" : "true",
+		    "allowed_ids" : ["01", "02", "03"]
+		}
     },
     "version" : "1"
 }
