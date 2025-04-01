@@ -21,9 +21,6 @@
     "save_set_aside_request": {
       "name": "save_set_aside_request"
     },
-    "allow_only_specific_eauth_ids": {
-      "name": "allow_only_specific_eauth_ids"
-    },
     "valid_auth_ids": {
       "name": "valid_auth_ids",
       "attributes": {
@@ -95,9 +92,6 @@
       "enabled": true
     },
     "save_set_aside_request": {
-      "enabled": true
-    },
-    "allow_only_specific_eauth_ids": {
       "enabled": true
     },
     "valid_auth_ids": {
