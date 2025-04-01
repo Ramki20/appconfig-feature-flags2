@@ -33,10 +33,10 @@ pipeline {
                     // Determine which config files to process
                     if (params.DEPLOYMENT_MODE == 'all') {
                         // Find all JSON files in the config directory
-                        def configFiles = sh(script: "find ${env.CONFIG_DIR} -name '*.json' -type f || echo ''", returnStdout: true).trim()
+                        def configFiles = sh(script: "find ${env.CONFIG_DIR} -name \"*.json\" -type f || echo \"\"", returnStdout: true).trim()
                         
                         if (configFiles) {
-                            env.CONFIG_FILES = configFiles.split('\n').join(',')
+                            env.CONFIG_FILES = configFiles.split("\n").join(",")
                             echo "Found config files: ${env.CONFIG_FILES}"
                         } else {
                             echo "No JSON files found in ${env.CONFIG_DIR}"
@@ -69,77 +69,43 @@ pipeline {
         stage('Process Config Files') {
             steps {
                 script {
-                    def configFiles = env.CONFIG_FILES.split(',')
+                    def configFiles = env.CONFIG_FILES.split(",")
                     
                     // Debug the config files
                     echo "Config files to process: ${configFiles}"
                     
                     // Create a map to store Terraform variables
                     def tfVars = [:]
-                    tfVars.put('environment', env.BRANCH_NAME)
-                    tfVars.put('config_version', env.CONFIG_VERSION)
+                    tfVars.put("environment", env.BRANCH_NAME)
+                    tfVars.put("config_version", env.CONFIG_VERSION)
                     
                     // Add config files information to variables
-                    tfVars.put('config_file_count', configFiles.size())
+                    tfVars.put("config_file_count", configFiles.size())
                     
                     def configFileNames = []
                     def configFilePaths = []
                     
                     configFiles.eachWithIndex { configFilePath, index ->
-                        def configFileName = configFilePath.trim().split('/')[-1]
-                        def configNameWithoutExt = configFileName.replaceAll('\\.json
-            }
-        }
-        
-        stage('Terraform Plan') {
-            steps {
-                dir('terraform') {
-                    sh 'terraform plan -var-file=terraform.tfvars.json -out=tfplan'
-                }
-            }
-        }
-        
-        stage('Terraform Apply') {
-            steps {
-                dir('terraform') {
-                    sh 'terraform apply -auto-approve tfplan'
-                }
-            }
-        }
-    }
-    
-    post {
-        success {
-            echo "AWS AppConfig deployment completed successfully!"
-        }
-        failure {
-            echo "AWS AppConfig deployment failed!"
-        }
-        always {
-            // Clean up workspace
-            cleanWs()
-        }
-    }
-}
-, '')
+                        def configFileName = configFilePath.trim().split("/")[-1]
+                        def configNameWithoutExt = configFileName.replaceAll("\\.[jJ][sS][oO][nN]\$", "")
                         
                         echo "Processing config file ${index + 1}: ${configFileName}"
                         
                         // Add to arrays for Terraform
-                        configFileNames << configNameWithoutExt
-                        configFilePaths << configFilePath.trim()
+                        configFileNames.add(configNameWithoutExt)
+                        configFilePaths.add(configFilePath.trim())
                     }
                     
                     // Add arrays to Terraform vars
-                    tfVars.put('config_file_names', configFileNames)
-                    tfVars.put('config_file_paths', configFilePaths)
+                    tfVars.put("config_file_names", configFileNames)
+                    tfVars.put("config_file_paths", configFilePaths)
                     
                     // Debug the Terraform variables
                     echo "Terraform variables to be written: ${tfVars}"
                     
                     // Write all variables to a file for Terraform to use
                     def tfVarsContent = groovy.json.JsonOutput.toJson(tfVars)
-                    writeFile file: 'terraform/terraform.tfvars.json', text: tfVarsContent
+                    writeFile file: "terraform/terraform.tfvars.json", text: tfVarsContent
                     
                     echo "Created Terraform variables file with ${configFiles.size()} config files"
                 }
