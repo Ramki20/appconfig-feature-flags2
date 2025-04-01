@@ -1,0 +1,85 @@
+{
+    "flags" : {
+        "scotts_testing_fee" : {
+            "name" : "scotts_testing_fee"
+        },
+        "credit_report_fee" : {
+            "name" : "credit_report_fee"
+        },
+        "credit_report_fee_2" : {
+            "name" : "credit_report_fee_2"
+        },
+        "feedback" : {
+            "name" : "feedback"
+        },
+        "google_analytics" : {
+            "name" : "google_analytics"
+        },
+        "angular_console_logs" : {
+            "name" : "angular_console_logs"
+        },
+        "loan_purpose" : {
+            "name" : "loan_purpose"
+        },
+        "farm_operating_plan" : {
+            "name" : "farm_operating_plan"
+        },
+        "specific_ccids" : {
+            "name" : "specific_ccids",
+            "attributes" : {
+                "allowed_ccids" : {
+                    "constraints" : {
+                        "type" : "array",
+                        "required" : true
+                    }
+                }
+            }
+        },
+        "specific_states" : {
+            "name" : "specific_states",
+            "attributes" : {
+                "allowed_states" : {
+                    "constraints" : {
+                        "type" : "array",
+                        "required" : true
+                    }
+                }
+            }
+        }
+    },
+    "values" : {
+        "scotts_testing_fee" : {
+            "enabled" : "true"
+        },
+        "credit_report_fee" : {
+            "enabled" : "true"
+        },
+        "credit_report_fee_2" : {
+            "enabled" : "false"
+        },
+        "feedback" : {
+            "enabled" : "true"
+        },
+        "google_analytics" : {
+            "enabled" : "true"
+        },
+        "angular_console_logs" : {
+            "enabled" : "true"
+        },
+        "loan_purpose" : {
+            "enabled" : "true"
+        },
+        "farm_operating_plan" : {
+            "enabled" : "true"
+        },
+        "specific_ccids" : {
+            "enabled" : "true",
+            "allowed_ccids" : [1001, 1002, 1003]
+        },
+        "specific_states" : {
+            "enabled" : "true",
+            "allowed_states" : ["01", "02", "03", "04", "05"]
+        }
+    },
+    "version" : "1"
+}
