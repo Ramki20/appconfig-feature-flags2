@@ -10,11 +10,14 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         AWS_DEFAULT_REGION    = 'us-east-1'
         CONFIG_DIR = 'config'
+        SCRIPTS_DIR = 'scripts'
+        VENV_PATH = "${WORKSPACE}/venv"
     }
     
     parameters {
         choice(name: 'DEPLOYMENT_MODE', choices: ['all', 'single'], description: 'Deploy all config files or a single one')
         string(name: 'CONFIG_FILE', defaultValue: 'test_feature_flags2.json', description: 'Name of the feature flags JSON file (used only when DEPLOYMENT_MODE is "single")')
+        booleanParam(name: 'MERGE_CONFIGS', defaultValue: true, description: 'Merge with existing AppConfig instead of overwriting')
     }
     
     stages {
@@ -29,6 +32,30 @@ pipeline {
                 script {
                     env.BRANCH_NAME = 'dev'
                     env.CONFIG_VERSION = 1
+                    
+                    // Make the merge script executable if it exists
+                    sh "chmod +x ${env.SCRIPTS_DIR}/merge_appconfig.py || echo 'Script not found, will be created later'"
+                    
+                    // Install required Python packages
+	                sh '''
+	                    echo "Checking Python installation..."
+	                    python3 --version
+	                    
+	                    # Install python3-full and python3-venv (if possible)
+	                    apt-get update -y && apt-get install -y python3-full python3-venv || true
+	                    
+	                    # Create a virtual environment
+	                    echo "Creating virtual environment at ${VENV_PATH}"
+	                    python3 -m venv ${VENV_PATH}
+	                    
+	                    # Activate virtual environment and install dependencies
+	                    . ${VENV_PATH}/bin/activate
+	                    pip install --upgrade pip
+	                    pip install boto3
+	                    
+	                    # Verify installations
+	                    pip list | grep boto3
+	                '''
                     
                     // Determine which config files to process
                     if (params.DEPLOYMENT_MODE == 'all') {
@@ -53,6 +80,40 @@ pipeline {
                     def configFilesExist = sh(script: "for f in \$(echo ${env.CONFIG_FILES} | tr ',' ' '); do if [ ! -f \"\$f\" ]; then echo \"\$f does not exist\"; exit 1; fi; done", returnStatus: true)
                     if (configFilesExist != 0) {
                         error "One or more configuration files do not exist."
+                    }
+                }
+            }
+        }
+        
+        stage('Prepare Merged Configs') {
+            when {
+                expression { return params.MERGE_CONFIGS }
+            }
+            steps {
+                script {
+                    def configFiles = env.CONFIG_FILES.split(",")
+                    
+                    configFiles.each { configFilePath ->
+                        def configFileName = configFilePath.trim().split("/")[-1]
+                        def configNameWithoutExt = configFileName.replaceAll("\\.[jJ][sS][oO][nN]\$", "")
+                        
+                        echo "Preparing merged configuration for: ${configNameWithoutExt}"
+                        
+                        // Run the Python script for each config file to create merged files
+                        // Note: We're only creating the merged files here, not updating or deploying
+                        // Make sure to activate the virtual environment before running the script
+                        sh """
+                            # Activate virtual environment
+                            . ${env.VENV_PATH}/bin/activate
+                            
+                            # Run the merge script
+                            python3 ${env.SCRIPTS_DIR}/merge_appconfig.py \
+                                --config-file ${configFilePath} \
+                                --app-name ${configNameWithoutExt} \
+                                --env-name ${env.BRANCH_NAME} \
+                                --profile-name ${configNameWithoutExt} \
+                                --force-create
+                        """
                     }
                 }
             }

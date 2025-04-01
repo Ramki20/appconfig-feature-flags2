@@ -4,8 +4,16 @@ locals {
     for i in range(var.config_file_count) : {
       name = var.config_file_names[i]
       path = var.config_file_paths[i]
+      merged_path = "${var.config_file_paths[i]}.merged.json"
     }
   ]
+  
+  # Determine which path to use based on merged file existence
+  config_content_paths = {
+    for idx, file in local.config_files : idx => (
+      fileexists(file.merged_path) ? file.merged_path : file.path
+    )
+  }
 }
 
 # AWS AppConfig Deployment Strategy (shared across all deployments)
@@ -74,7 +82,8 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
   description              = "Feature flags configuration version ${var.config_version}"
   content_type             = "application/json"
   
-  content = file(each.value.path)
+  # Use the merged configuration if it exists, otherwise use the original file
+  content = file(local.config_content_paths[each.key])
 }
 
 # Deploy Configuration for each configuration profile

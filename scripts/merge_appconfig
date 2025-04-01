@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+import json
+import boto3
+import argparse
+import os
+import logging
+import sys
+from botocore.exceptions import ClientError
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger('appconfig-merger')
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Merge AWS AppConfig feature flags with existing configuration')
+    parser.add_argument('--config-file', required=True, help='Path to the feature flags JSON file')
+    parser.add_argument('--app-name', required=True, help='AWS AppConfig application name')
+    parser.add_argument('--env-name', required=True, help='AWS AppConfig environment name')
+    parser.add_argument('--profile-name', required=True, help='AWS AppConfig profile name')
+    parser.add_argument('--force-create', action='store_true', help='Force create new configuration if none exists')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--output-file', help='Path to write the merged configuration (defaults to same as input with .merged.json suffix)')
+    
+    return parser.parse_args()
+
+def load_terraform_config(file_path):
+    """Load the Terraform-defined configuration from a JSON file"""
+    try:
+        with open(file_path, 'r') as f:
+            config = json.load(f)
+        
+        # Validate the basic structure 
+        if not all(key in config for key in ["flags", "values"]):
+            logger.error(f"Config file {file_path} is missing required keys 'flags' and/or 'values'")
+            sys.exit(1)
+            
+        return config
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing JSON file {file_path}: {str(e)}")
+        sys.exit(1)
+    except FileNotFoundError:
+        logger.error(f"Config file {file_path} not found")
+        sys.exit(1)
+
+def get_current_appconfig(client, application_name, environment_name, profile_name):
+    """Get the current configuration from AWS AppConfig"""
+    try:
+        # First, get the application ID
+        app_response = client.list_applications()
+        app_id = None
+        
+        for app in app_response['Items']:
+            if app['Name'] == application_name:
+                app_id = app['Id']
+                logger.info(f"Found application '{application_name}' with ID: {app_id}")
+                break
+        
+        if not app_id:
+            logger.warning(f"Application '{application_name}' not found in AWS AppConfig")
+            return None, None
+        
+        # Next, get the environment ID
+        env_response = client.list_environments(ApplicationId=app_id)
+        env_id = None
+        
+        for env in env_response['Items']:
+            if env['Name'] == environment_name:
+                env_id = env['Id']
+                logger.info(f"Found environment '{environment_name}' with ID: {env_id}")
+                break
+        
+        if not env_id:
+            logger.warning(f"Environment '{environment_name}' not found in AWS AppConfig")
+            return None, None
+        
+        # Then, get the configuration profile ID
+        profile_response = client.list_configuration_profiles(ApplicationId=app_id)
+        profile_id = None
+        
+        for profile in profile_response['Items']:
+            if profile['Name'] == profile_name:
+                profile_id = profile['Id']
+                logger.info(f"Found configuration profile '{profile_name}' with ID: {profile_id}")
+                break
+        
+        if not profile_id:
+            logger.warning(f"Configuration profile '{profile_name}' not found in AWS AppConfig")
+            return None, None
+        
+        # Finally, get the configuration
+        config_response = client.get_configuration(
+            Application=application_name,
+            Environment=environment_name,
+            Configuration=profile_name,
+            ClientId='appconfig-merger'
+        )
+        
+        # Decode the content from bytes to string, then parse JSON
+        config_content = config_response['Content'].read().decode('utf-8')
+        
+        try:
+            current_config = json.loads(config_content)
+            current_version = config_response['ConfigurationVersion']
+            logger.info(f"Retrieved existing configuration version: {current_version}")
+            
+            return current_config, current_version
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing current configuration: {str(e)}")
+            return None, None
+            
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.warning("No existing configuration found")
+            return None, None
+        else:
+            logger.error(f"Error retrieving current configuration: {str(e)}")
+            return None, None
+
+def create_merged_config(terraform_config, current_config):
+    """Create a merged configuration that preserves existing values"""
+    # If no current configuration exists, just use the terraform config
+    if not current_config:
+        logger.info("No existing configuration found, using terraform configuration as-is")
+        return terraform_config
+    
+    # Create a new merged configuration
+    # Start with the structure from Terraform
+    merged_config = {
+        "flags": terraform_config["flags"],
+        "values": {},
+        "version": str(int(current_config.get("version", "0")) + 1)
+    }
+    
+    # For each flag in the new structure
+    for flag_name in terraform_config["flags"].keys():
+        flag_def = terraform_config["flags"].get(flag_name, {})
+        
+        if flag_name in current_config.get("values", {}):
+            # Start with existing values from AWS AppConfig
+            logger.info(f"Preserving existing values for flag: {flag_name}")
+            merged_config["values"][flag_name] = current_config["values"][flag_name]
+            
+            # Check for any new attributes that might be in terraform but not in current config
+            if "attributes" in flag_def:
+                for attr_name in flag_def.get("attributes", {}):
+                    # If this is a new attribute not present in current values, add it with default
+                    if attr_name not in merged_config["values"][flag_name] and attr_name in terraform_config["values"].get(flag_name, {}):
+                        logger.info(f"Adding new attribute '{attr_name}' to existing flag: {flag_name}")
+                        merged_config["values"][flag_name][attr_name] = terraform_config["values"][flag_name][attr_name]
+        else:
+            # Use default values from Terraform JSON for new flags
+            logger.info(f"Adding new flag with default values: {flag_name}")
+            merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"})
+    
+    # Track and log the changes
+    added_flags = set(terraform_config["flags"].keys()) - set(current_config.get("flags", {}).keys())
+    removed_flags = set(current_config.get("flags", {}).keys()) - set(terraform_config["flags"].keys())
+    
+    # Also track attribute changes
+    modified_flags = []
+    for flag_name in set(terraform_config["flags"].keys()) & set(current_config.get("flags", {}).keys()):
+        tf_attrs = set(terraform_config["flags"].get(flag_name, {}).get("attributes", {}).keys())
+        current_attrs = set(current_config.get("flags", {}).get(flag_name, {}).get("attributes", {}).keys())
+        
+        if tf_attrs != current_attrs:
+            modified_flags.append({
+                "flag": flag_name,
+                "added_attrs": list(tf_attrs - current_attrs),
+                "removed_attrs": list(current_attrs - tf_attrs)
+            })
+    
+    if added_flags:
+        logger.info(f"Adding flags: {added_flags}")
+    
+    if removed_flags:
+        logger.info(f"Removing flags: {removed_flags}")
+    
+    if modified_flags:
+        logger.info(f"Modifying flag attributes: {json.dumps(modified_flags)}")
+    
+    logger.info(f"Configuration version updated from {current_config.get('version', '0')} to {merged_config['version']}")
+    
+    return merged_config
+
+def main():
+    args = parse_arguments()
+    
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+    
+    logger.info(f"Processing configuration file: {args.config_file}")
+    logger.info(f"Using AppConfig application: {args.app_name}")
+    logger.info(f"Using AppConfig environment: {args.env_name}")
+    logger.info(f"Using AppConfig profile: {args.profile_name}")
+    
+    # Load the terraform-defined configuration
+    terraform_config = load_terraform_config(args.config_file)
+    
+    # Initialize the AWS AppConfig client
+    client = boto3.client('appconfig')
+    
+    # Get the current configuration from AWS AppConfig
+    current_config, current_version = get_current_appconfig(client, args.app_name, args.env_name, args.profile_name)
+    
+    if not current_config and not args.force_create:
+        logger.error("No existing configuration found and --force-create not specified")
+        logger.error("Exiting without making changes")
+        sys.exit(1)
+    
+    # If no current config and force create is set, use terraform config as-is
+    if not current_config and args.force_create:
+        logger.info("Creating new configuration from terraform file")
+        merged_config = terraform_config
+    else:
+        # Create the merged configuration
+        merged_config = create_merged_config(terraform_config, current_config)
+    
+    # Determine the output file path
+    if args.output_file:
+        output_path = args.output_file
+    else:
+        output_path = f"{args.config_file}.merged.json"
+    
+    # Write the merged configuration to the output file
+    with open(output_path, 'w') as f:
+        json.dump(merged_config, f, indent=2)
+    
+    logger.info(f"Merged configuration written to: {output_path}")
+    
+    # Exit with success code
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
