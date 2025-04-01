@@ -1,0 +1,152 @@
+{
+  "flags": {
+    "dbsa_servicing_navigation": {
+      "name": "dbsa_servicing_navigation"
+    },
+    "home_page_direct_loan_button": {
+      "name": "home_page_direct_loan_button"
+    },
+    "home_page_guaranteed_loan_button": {
+      "name": "home_page_guaranteed_loan_button"
+    },
+    "home_page_port_mngmt_button": {
+      "name": "home_page_port_mngmt_button"
+    },
+    "home_page_legacy_system_button": {
+      "name": "home_page_legacy_system_button"
+    },
+    "customer_profile_pending_request_button": {
+      "name": "customer_profile_pending_request_button"
+    },
+    "save_set_aside_request": {
+      "name": "save_set_aside_request"
+    },
+    "allow_only_specific_eauth_ids": {
+      "name": "allow_only_specific_eauth_ids"
+    },
+    "valid_auth_ids": {
+      "name": "valid_auth_ids",
+      "attributes": {
+        "allowed_ids": {
+          "constraints": {
+            "type": "array",
+            "required": true
+          }
+        }
+      }
+    },
+    "service_request_in_progress_and_completed_tabs": {
+      "name": "service_request_in_progress_and_completed_tabs"
+    },
+    "get_request_records_lambda": {
+      "name": "get_request_records_lambda"
+    },
+    "navigate_to_pending_set_aside_request": {
+      "name": "navigate_to_pending_set_aside_request"
+    },
+    "navigate_to_complete_set_aside_request": {
+      "name": "navigate_to_complete_set_aside_request"
+    },
+    "process_set_aside": {
+      "name": "process_set_aside"
+    },
+    "aws_app_config_feature_flag": {
+      "name": "aws_app_config_feature_flag"
+    },
+    "create_set_aside_requests": {
+      "name": "create_set_aside_requests"
+    },
+    "request_process_details_page": {
+      "name": "request_process_details_page"
+    },
+    "preliminary_review_card": {
+      "name": "preliminary_review_card"
+    },
+    "request_process_details_page_documents_tab": {
+      "name": "request_process_details_page_documents_tab"
+    },
+    "set_aside_request_details_navigation": {
+      "name": "set_aside_request_details_navigation"
+    },
+    "request_summary_card": {
+      "name": "request_summary_card"
+    },
+    "select_withdrawal_reason": {
+      "name": "select_withdrawal_reason"
+    }
+  },
+  "values": {
+    "dbsa_servicing_navigation": {
+      "enabled": true
+    },
+    "home_page_direct_loan_button": {
+      "enabled": true
+    },
+    "home_page_guaranteed_loan_button": {
+      "enabled": true
+    },
+    "home_page_port_mngmt_button": {
+      "enabled": true
+    },
+    "home_page_legacy_system_button": {
+      "enabled": true
+    },
+    "customer_profile_pending_request_button": {
+      "enabled": true
+    },
+    "save_set_aside_request": {
+      "enabled": true
+    },
+    "allow_only_specific_eauth_ids": {
+      "enabled": true
+    },
+    "valid_auth_ids": {
+      "enabled": true,
+      "allowed_ids": [
+        "28200310169021026877",
+        "28200310169021000430",
+        "28200407069030925009"
+      ]
+    },
+    "service_request_in_progress_and_completed_tabs": {
+      "enabled": true
+    },
+    "get_request_records_lambda": {
+      "enabled": true
+    },
+    "navigate_to_pending_set_aside_request": {
+      "enabled": true
+    },
+    "navigate_to_complete_set_aside_request": {
+      "enabled": true
+    },
+    "process_set_aside": {
+      "enabled": true
+    },
+    "aws_app_config_feature_flag": {
+      "enabled": true
+    },
+    "create_set_aside_requests": {
+      "enabled": true
+    },
+    "request_process_details_page": {
+      "enabled": true
+    },
+    "preliminary_review_card": {
+      "enabled": true
+    },
+    "request_process_details_page_documents_tab": {
+      "enabled": true
+    },
+    "set_aside_request_details_navigation": {
+      "enabled": true
+    },
+    "request_summary_card": {
+      "enabled": true
+    },
+    "select_withdrawal_reason": {
+      "enabled": true
+    }
+  },
+  "version": "1"
+}
