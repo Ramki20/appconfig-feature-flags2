@@ -25,7 +25,12 @@ resource "aws_appconfig_application" "feature_flags_app" {
   
   name        = each.value.name
   description = "Feature flags application created from ${each.value.name}"
-  # No tags specified here - using default_tags from provider
+  
+  # Include explicit tags to match existing resources
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
 # AWS AppConfig Environment for each application
@@ -35,7 +40,12 @@ resource "aws_appconfig_environment" "feature_flags_env" {
   name           = var.environment
   description    = "Environment for ${each.value.name} based on branch ${var.environment}"
   application_id = aws_appconfig_application.feature_flags_app[each.key].id
-  # No tags specified here - using default_tags from provider
+  
+  # Include explicit tags to match existing resources
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
 # AWS AppConfig Configuration Profile for each application
@@ -47,7 +57,12 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   application_id = aws_appconfig_application.feature_flags_app[each.key].id
   location_uri   = "hosted"
   type           = "AWS.AppConfig.FeatureFlags"
-  # No tags specified here - using default_tags from provider
+  
+  # Include explicit tags to match existing resources
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
 # Hosted Configuration Version for each configuration profile

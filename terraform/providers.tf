@@ -18,11 +18,12 @@ terraform {
 provider "aws" {
   region = var.aws_region
   
-  default_tags {
-    tags = {
-      Project     = "AppConfig-FeatureFlags"
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-    }
-  }
+  # Comment out default_tags to avoid conflicts with explicit tags
+  # default_tags {
+  #   tags = {
+  #     Project     = "AppConfig-FeatureFlags"
+  #     Environment = var.environment
+  #     ManagedBy   = "Terraform"
+  #   }
+  # }
 }
