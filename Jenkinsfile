@@ -115,7 +115,8 @@ pipeline {
                         
                         // Add to arrays for Terraform
                         configFileNames.add(configNameWithoutExt)
-                        configFilePaths.add(configFilePath.trim())
+                        // Adjust the path to be relative to the terraform directory
+                        configFilePaths.add("../" + configFilePath.trim())
                     }
                     
                     // Add arrays to Terraform vars
