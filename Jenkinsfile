@@ -14,7 +14,7 @@ pipeline {
     
     parameters {
         choice(name: 'DEPLOYMENT_MODE', choices: ['all', 'single'], description: 'Deploy all config files or a single one')
-        string(name: 'CONFIG_FILE', defaultValue: 'test_feature_flags.json', description: 'Name of the feature flags JSON file (used only when DEPLOYMENT_MODE is "single")')
+        string(name: 'CONFIG_FILE', defaultValue: 'test_feature_flags2.json', description: 'Name of the feature flags JSON file (used only when DEPLOYMENT_MODE is "single")')
     }
     
     stages {
