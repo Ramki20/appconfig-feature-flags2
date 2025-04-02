@@ -8,10 +8,10 @@ locals {
     }
   ]
   
-  # Determine which path to use based on merged file existence
+  # Determine which path to use based on merged file existence and use_merged_configs variable
   config_content_paths = {
     for idx, file in local.config_files : idx => (
-      fileexists(file.merged_path) ? file.merged_path : file.path
+      var.use_merged_configs && fileexists(file.merged_path) ? file.merged_path : file.path
     )
   }
 }
@@ -73,6 +73,13 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   }
 }
 
+# Data source to read the file content dynamically at plan/apply time
+# This ensures we're always using the most up-to-date merged config file
+data "local_file" "config_content" {
+  for_each = local.config_content_paths
+  filename = each.value
+}
+
 # Hosted Configuration Version for each configuration profile
 resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
   for_each      = { for idx, file in local.config_files : idx => file }
@@ -82,18 +89,15 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
   description              = "Feature flags configuration version ${var.config_version}"
   content_type             = "application/json"
   
-  # Use the merged configuration if it exists, otherwise use the original file
-  content = file(local.config_content_paths[each.key])
-}
-
-# Deploy Configuration for each configuration profile
-resource "aws_appconfig_deployment" "feature_flags_deployment" {
-  for_each      = { for idx, file in local.config_files : idx => file }
+  # Use data source to ensure we get the latest content
+  content = data.local_file.config_content[each.key].content
   
-  application_id           = aws_appconfig_application.feature_flags_app[each.key].id
-  configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
-  configuration_version    = aws_appconfig_hosted_configuration_version.feature_flags_version[each.key].version_number
-  deployment_strategy_id   = aws_appconfig_deployment_strategy.quick_deployment.id
-  environment_id           = aws_appconfig_environment.feature_flags_env[each.key].environment_id
-  description              = "Deployment of ${each.value.name} version ${var.config_version} to ${var.environment}"
-}
+  # Add lifecycle policy to ignore content changes outside of this deployment
+  # This prevents Terraform from trying to update the content if it hasn't really changed
+  lifecycle {
+    ignore_changes = [
+      # Don't replace configuration version when only the content changes slightly
+      # This allows manual modifications via UI to persist
+      content
+    ]
+  }

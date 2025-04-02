@@ -24,6 +24,7 @@ def parse_arguments():
     parser.add_argument('--force-create', action='store_true', help='Force create new configuration if none exists')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('--output-file', help='Path to write the merged configuration (defaults to same as input with .merged.json suffix)')
+    parser.add_argument('--always-preserve', action='store_true', help='Always preserve existing flag values, even if they differ from terraform')
     
     return parser.parse_args()
 
@@ -107,6 +108,10 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             current_version = config_response['ConfigurationVersion']
             logger.info(f"Retrieved existing configuration version: {current_version}")
             
+            # Log the current configuration for debugging
+            if logger.level <= logging.DEBUG:
+                logger.debug(f"Current configuration: {json.dumps(current_config, indent=2)}")
+            
             return current_config, current_version
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing current configuration: {str(e)}")
@@ -120,15 +125,18 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             logger.error(f"Error retrieving current configuration: {str(e)}")
             return None, None
 
-def create_merged_config(terraform_config, current_config):
+def create_merged_config(terraform_config, current_config, always_preserve=False):
     """Create a merged configuration that preserves existing values"""
     # If no current configuration exists, just use the terraform config
     if not current_config:
         logger.info("No existing configuration found, using terraform configuration as-is")
+        # Make sure the config has a version
+        if "version" not in terraform_config:
+            terraform_config["version"] = "1"
         return terraform_config
     
     # Create a new merged configuration
-    # Start with the structure from Terraform
+    # Start with the structure from Terraform (definition of flags)
     merged_config = {
         "flags": terraform_config["flags"],
         "values": {},
@@ -141,6 +149,11 @@ def create_merged_config(terraform_config, current_config):
     modified_flags = []
     preserved_flags = []
     
+    # Log the state before merging
+    logger.info(f"Found {len(current_config.get('flags', {}))} flags in current config and {len(terraform_config['flags'])} flags in terraform config")
+    logger.info(f"New flags to be added: {added_flags if added_flags else 'None'}")
+    logger.info(f"Flags to be removed: {removed_flags if removed_flags else 'None'}")
+    
     # For each flag in the Terraform structure (these are the flags we want to keep)
     for flag_name in terraform_config["flags"].keys():
         flag_def = terraform_config["flags"].get(flag_name, {})
@@ -151,10 +164,16 @@ def create_merged_config(terraform_config, current_config):
             merged_config["values"][flag_name] = current_config["values"][flag_name].copy()
             preserved_flags.append(flag_name)
             
+            # Only override enabled status if explicitly set to "false" in terraform and not in always_preserve mode
+            if "enabled" in terraform_config["values"].get(flag_name, {}) and not always_preserve:
+                if terraform_config["values"][flag_name]["enabled"] == "false" or terraform_config["values"][flag_name]["enabled"] is False:
+                    logger.info(f"Explicitly disabling flag '{flag_name}' based on terraform config")
+                    merged_config["values"][flag_name]["enabled"] = "false"
+            
             # Check for any new attributes that might be in terraform but not in current config
             if "attributes" in flag_def:
                 for attr_name in flag_def.get("attributes", {}):
-                    # If this is a new attribute not present in current values, add it with default
+                    # If this is a new attribute not present in current values, add it with default from terraform
                     if attr_name not in merged_config["values"][flag_name] and attr_name in terraform_config["values"].get(flag_name, {}):
                         logger.info(f"Adding new attribute '{attr_name}' to existing flag: {flag_name}")
                         merged_config["values"][flag_name][attr_name] = terraform_config["values"][flag_name][attr_name]
@@ -221,6 +240,10 @@ def create_merged_config(terraform_config, current_config):
         
         sys.exit(1)
     
+    # Log the final merged configuration for debugging
+    if logger.level <= logging.DEBUG:
+        logger.debug(f"Final merged configuration: {json.dumps(merged_config, indent=2)}")
+    
     return merged_config
 
 def main():
@@ -233,6 +256,7 @@ def main():
     logger.info(f"Using AppConfig application: {args.app_name}")
     logger.info(f"Using AppConfig environment: {args.env_name}")
     logger.info(f"Using AppConfig profile: {args.profile_name}")
+    logger.info(f"Always preserve mode: {args.always_preserve}")
     
     # Load the terraform-defined configuration
     terraform_config = load_terraform_config(args.config_file)
@@ -254,7 +278,7 @@ def main():
         merged_config = terraform_config
     else:
         # Create the merged configuration
-        merged_config = create_merged_config(terraform_config, current_config)
+        merged_config = create_merged_config(terraform_config, current_config, args.always_preserve)
     
     # Determine the output file path
     if args.output_file:
