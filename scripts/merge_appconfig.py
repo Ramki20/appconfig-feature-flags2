@@ -135,14 +135,21 @@ def create_merged_config(terraform_config, current_config):
         "version": str(int(current_config.get("version", "0")) + 1)
     }
     
-    # For each flag in the new structure
+    # Track changes for logging
+    added_flags = set(terraform_config["flags"].keys()) - set(current_config.get("flags", {}).keys())
+    removed_flags = set(current_config.get("flags", {}).keys()) - set(terraform_config["flags"].keys())
+    modified_flags = []
+    preserved_flags = []
+    
+    # For each flag in the Terraform structure (these are the flags we want to keep)
     for flag_name in terraform_config["flags"].keys():
         flag_def = terraform_config["flags"].get(flag_name, {})
         
         if flag_name in current_config.get("values", {}):
-            # Start with existing values from AWS AppConfig
+            # Start with existing values from AWS AppConfig for flags that already exist
             logger.info(f"Preserving existing values for flag: {flag_name}")
-            merged_config["values"][flag_name] = current_config["values"][flag_name]
+            merged_config["values"][flag_name] = current_config["values"][flag_name].copy()
+            preserved_flags.append(flag_name)
             
             # Check for any new attributes that might be in terraform but not in current config
             if "attributes" in flag_def:
@@ -151,38 +158,68 @@ def create_merged_config(terraform_config, current_config):
                     if attr_name not in merged_config["values"][flag_name] and attr_name in terraform_config["values"].get(flag_name, {}):
                         logger.info(f"Adding new attribute '{attr_name}' to existing flag: {flag_name}")
                         merged_config["values"][flag_name][attr_name] = terraform_config["values"][flag_name][attr_name]
+                        
+                        # Track this flag as modified
+                        if flag_name not in [m["flag"] for m in modified_flags]:
+                            modified_flags.append({
+                                "flag": flag_name,
+                                "added_attrs": [attr_name],
+                                "removed_attrs": []
+                            })
         else:
             # Use default values from Terraform JSON for new flags
             logger.info(f"Adding new flag with default values: {flag_name}")
-            merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"})
+            merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"}).copy()
     
-    # Track and log the changes
-    added_flags = set(terraform_config["flags"].keys()) - set(current_config.get("flags", {}).keys())
-    removed_flags = set(current_config.get("flags", {}).keys()) - set(terraform_config["flags"].keys())
-    
-    # Also track attribute changes
-    modified_flags = []
-    for flag_name in set(terraform_config["flags"].keys()) & set(current_config.get("flags", {}).keys()):
-        tf_attrs = set(terraform_config["flags"].get(flag_name, {}).get("attributes", {}).keys())
-        current_attrs = set(current_config.get("flags", {}).get(flag_name, {}).get("attributes", {}).keys())
-        
-        if tf_attrs != current_attrs:
-            modified_flags.append({
-                "flag": flag_name,
-                "added_attrs": list(tf_attrs - current_attrs),
-                "removed_attrs": list(current_attrs - tf_attrs)
-            })
-    
+    # Display detailed log of changes
     if added_flags:
         logger.info(f"Adding flags: {added_flags}")
     
     if removed_flags:
         logger.info(f"Removing flags: {removed_flags}")
     
+    if preserved_flags:
+        logger.info(f"Preserving existing values for flags: {preserved_flags}")
+    
     if modified_flags:
         logger.info(f"Modifying flag attributes: {json.dumps(modified_flags)}")
     
+    # Also track attribute changes that aren't additions
+    attr_modified_flags = []
+    for flag_name in set(terraform_config["flags"].keys()) & set(current_config.get("flags", {}).keys()):
+        tf_attrs = set(terraform_config["flags"].get(flag_name, {}).get("attributes", {}).keys())
+        current_attrs = set(current_config.get("flags", {}).get(flag_name, {}).get("attributes", {}).keys())
+        
+        # Check for attributes that are in the current config but not in Terraform (these will be removed)
+        if current_attrs - tf_attrs:
+            attr_modified_flags.append({
+                "flag": flag_name,
+                "added_attrs": [],
+                "removed_attrs": list(current_attrs - tf_attrs)
+            })
+            logger.warning(f"Flag '{flag_name}' has attributes that will be removed: {list(current_attrs - tf_attrs)}")
+    
+    if attr_modified_flags:
+        logger.info(f"Flags with attributes being removed: {json.dumps(attr_modified_flags)}")
+    
     logger.info(f"Configuration version updated from {current_config.get('version', '0')} to {merged_config['version']}")
+    
+    # Perform a final validation check
+    if len(merged_config["flags"]) != len(merged_config["values"]):
+        logger.error(f"Configuration mismatch: {len(merged_config['flags'])} flags defined but {len(merged_config['values'])} value sets")
+        logger.error(f"Flags defined: {list(merged_config['flags'].keys())}")
+        logger.error(f"Values defined: {list(merged_config['values'].keys())}")
+        
+        # Find the differences
+        missing_values = set(merged_config["flags"].keys()) - set(merged_config["values"].keys())
+        extra_values = set(merged_config["values"].keys()) - set(merged_config["flags"].keys())
+        
+        if missing_values:
+            logger.error(f"Flags missing values: {missing_values}")
+        if extra_values:
+            logger.error(f"Values without flag definitions: {extra_values}")
+        
+        sys.exit(1)
     
     return merged_config
 
