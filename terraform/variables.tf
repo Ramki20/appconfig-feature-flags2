@@ -28,9 +28,3 @@ variable "config_file_paths" {
   description = "List of paths to the configuration files"
   type        = list(string)
 }
-
-variable "use_merged_configs" {
-  description = "Whether to use merged configuration files instead of the original ones"
-  type        = bool
-  default     = true
-}

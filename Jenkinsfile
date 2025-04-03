@@ -18,8 +18,6 @@ pipeline {
         choice(name: 'DEPLOYMENT_MODE', choices: ['all', 'single'], description: 'Deploy all config files or a single one')
         string(name: 'CONFIG_FILE', defaultValue: 'test_feature_flags2.json', description: 'Name of the feature flags JSON file (used only when DEPLOYMENT_MODE is "single")')
         booleanParam(name: 'MERGE_CONFIGS', defaultValue: true, description: 'Merge with existing AppConfig instead of overwriting')
-        booleanParam(name: 'ALWAYS_PRESERVE_VALUES', defaultValue: true, description: 'Always preserve existing flag values, even if they differ from code')
-        booleanParam(name: 'DEBUG_MODE', defaultValue: false, description: 'Enable debug logging for more detailed output')
     }
     
     stages {
@@ -101,42 +99,21 @@ pipeline {
                         
                         echo "Preparing merged configuration for: ${configNameWithoutExt}"
                         
-                        // Build the merge command with optional parameters
-                        def mergeCommand = """
+                        // Run the Python script for each config file to create merged files
+                        // Note: We're only creating the merged files here, not updating or deploying
+                        // Make sure to activate the virtual environment before running the script
+                        sh """
                             # Activate virtual environment
                             . ${env.VENV_PATH}/bin/activate
                             
                             # Run the merge script
-                            python3 ${env.SCRIPTS_DIR}/merge_appconfig.py \\
-                                --config-file ${configFilePath} \\
-                                --app-name ${configNameWithoutExt} \\
-                                --env-name ${env.BRANCH_NAME} \\
-                                --profile-name ${configNameWithoutExt} \\
+                            python3 ${env.SCRIPTS_DIR}/merge_appconfig.py \
+                                --config-file ${configFilePath} \
+                                --app-name ${configNameWithoutExt} \
+                                --env-name ${env.BRANCH_NAME} \
+                                --profile-name ${configNameWithoutExt} \
                                 --force-create
                         """
-                        
-                        // Add debug flag if enabled
-                        if (params.DEBUG_MODE) {
-                            mergeCommand += " \\\n    --debug"
-                        }
-                        
-                        // Add always-preserve flag if enabled
-                        if (params.ALWAYS_PRESERVE_VALUES) {
-                            mergeCommand += " \\\n    --always-preserve"
-                        }
-                        
-                        // Run the merge command
-                        sh mergeCommand
-                        
-                        // Verify the merged file was created
-                        def mergedFilePath = "${configFilePath}.merged.json"
-                        def mergedFileExists = sh(script: "test -f ${mergedFilePath}", returnStatus: true)
-                        
-                        if (mergedFileExists != 0) {
-                            error "Failed to create merged configuration file: ${mergedFilePath}"
-                        } else {
-                            echo "Successfully created merged configuration: ${mergedFilePath}"
-                        }
                     }
                 }
             }
@@ -207,9 +184,6 @@ pipeline {
                     tfVars.put("config_file_names", configFileNames)
                     tfVars.put("config_file_paths", configFilePaths)
                     
-                    // Add a flag to indicate if we're merging configs
-                    tfVars.put("use_merged_configs", params.MERGE_CONFIGS)
-                    
                     // Debug the Terraform variables
                     echo "Terraform variables to be written: ${tfVars}"
                     
@@ -237,38 +211,6 @@ pipeline {
                 }
             }
         }
-        
-        stage('Verify Deployment') {
-            steps {
-                script {
-                    def configFiles = env.CONFIG_FILES.split(",")
-                    
-                    configFiles.each { configFilePath ->
-                        def configFileName = configFilePath.trim().split("/")[-1]
-                        def configNameWithoutExt = configFileName.replaceAll("\\.[jJ][sS][oO][nN]\$", "")
-                        
-                        echo "Verifying deployment for: ${configNameWithoutExt}"
-                        
-                        sh """
-                            # Activate virtual environment
-                            . ${env.VENV_PATH}/bin/activate
-                            
-                            # Use AWS CLI to check the deployment status
-                            aws appconfig get-configuration \\
-                                --application ${configNameWithoutExt} \\
-                                --environment ${env.BRANCH_NAME} \\
-                                --configuration ${configNameWithoutExt} \\
-                                --client-id jenkins-verification \\
-                                verification-result.json
-                            
-                            # Print the version number for verification
-                            echo "Successfully deployed configuration:"
-                            cat verification-result.json | grep -o '\"version\":[^,}]*' || echo "Version not found"
-                        """
-                    }
-                }
-            }
-        }
     }
     
     post {
@@ -279,10 +221,8 @@ pipeline {
             echo "AWS AppConfig deployment failed!"
         }
         always {
-            // Clean up workspace but preserve logs
-            sh "find ${WORKSPACE} -type f -name '*.merged.json' -o -name '*.log' | xargs cp -t /tmp/ || true"
+            // Clean up workspace
             cleanWs()
-            sh "mkdir -p ${WORKSPACE}/logs && find /tmp -maxdepth 1 -type f -name '*.merged.json' -o -name '*.log' | xargs -I{} cp {} ${WORKSPACE}/logs/ || true"
         }
     }
 }
