@@ -5,6 +5,7 @@ import argparse
 import os
 import logging
 import sys
+import base64
 from botocore.exceptions import ClientError
 
 # Set up logging
@@ -24,6 +25,8 @@ def parse_arguments():
     parser.add_argument('--force-create', action='store_true', help='Force create new configuration if none exists')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('--output-file', help='Path to write the merged configuration (defaults to same as input with .merged.json suffix)')
+    parser.add_argument('--use-latest-version', action='store_true', default=True, 
+                        help='Use latest version from configuration profile instead of deployed config (defaults to True)')
     
     return parser.parse_args()
 
@@ -46,8 +49,91 @@ def load_terraform_config(file_path):
         logger.error(f"Config file {file_path} not found")
         sys.exit(1)
 
-def get_current_appconfig(client, application_name, environment_name, profile_name):
-    """Get the current configuration from AWS AppConfig"""
+def get_latest_version_config(client, app_id, profile_id):
+    """Get the latest version configuration from AWS AppConfig configuration profile"""
+    try:
+        # List all versions for this configuration profile
+        versions_response = client.list_hosted_configuration_versions(
+            ApplicationId=app_id,
+            ConfigurationProfileId=profile_id
+        )
+        
+        if not versions_response.get('Items'):
+            logger.warning(f"No configuration versions found for profile ID: {profile_id}")
+            return None, None
+        
+        # Sort versions by version number (descending) to get the latest
+        sorted_versions = sorted(
+            versions_response['Items'], 
+            key=lambda x: int(x['VersionNumber']), 
+            reverse=True
+        )
+        
+        if not sorted_versions:
+            logger.warning(f"No versions found for profile ID: {profile_id}")
+            return None, None
+        
+        latest_version = sorted_versions[0]
+        version_number = latest_version['VersionNumber']
+        
+        logger.info(f"Found latest version: {version_number}")
+        
+        # Get the content of the latest version
+        version_content = client.get_hosted_configuration_version(
+            ApplicationId=app_id,
+            ConfigurationProfileId=profile_id,
+            VersionNumber=version_number
+        )
+        
+        # Decode the content from bytes to string, then parse JSON
+        content = version_content['Content'].read().decode('utf-8')
+        
+        try:
+            config = json.loads(content)
+            logger.info(f"Retrieved latest configuration version: {version_number}")
+            
+            return config, version_number
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing configuration version content: {str(e)}")
+            return None, None
+            
+    except ClientError as e:
+        logger.error(f"Error retrieving configuration version: {str(e)}")
+        return None, None
+
+def get_active_config(client, application_name, environment_name, profile_name):
+    """Get the currently deployed/active configuration from AWS AppConfig"""
+    try:
+        config_response = client.get_configuration(
+            Application=application_name,
+            Environment=environment_name,
+            Configuration=profile_name,
+            ClientId='appconfig-merger'
+        )
+        
+        # Decode the content from bytes to string, then parse JSON
+        config_content = config_response['Content'].read().decode('utf-8')
+        
+        try:
+            current_config = json.loads(config_content)
+            current_version = config_response['ConfigurationVersion']
+            logger.info(f"Retrieved active deployed configuration version: {current_version}")
+            
+            return current_config, current_version
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing active configuration: {str(e)}")
+            return None, None
+            
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.warning("No active deployed configuration found")
+            return None, None
+        else:
+            logger.error(f"Error retrieving active configuration: {str(e)}")
+            return None, None
+
+def get_current_appconfig(client, application_name, environment_name, profile_name, use_latest_version=True):
+    """Get the current configuration from AWS AppConfig (either latest version or active deployed)"""
     try:
         # First, get the application ID
         app_response = client.list_applications()
@@ -91,34 +177,17 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             logger.warning(f"Configuration profile '{profile_name}' not found in AWS AppConfig")
             return None, None
         
-        # Finally, get the configuration
-        config_response = client.get_configuration(
-            Application=application_name,
-            Environment=environment_name,
-            Configuration=profile_name,
-            ClientId='appconfig-merger'
-        )
-        
-        # Decode the content from bytes to string, then parse JSON
-        config_content = config_response['Content'].read().decode('utf-8')
-        
-        try:
-            current_config = json.loads(config_content)
-            current_version = config_response['ConfigurationVersion']
-            logger.info(f"Retrieved existing configuration version: {current_version}")
-            
-            return current_config, current_version
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing current configuration: {str(e)}")
-            return None, None
+        # Determine which configuration to use based on the parameter
+        if use_latest_version:
+            logger.info("Using latest version from configuration profile (not necessarily deployed)")
+            return get_latest_version_config(client, app_id, profile_id)
+        else:
+            logger.info("Using currently deployed/active configuration")
+            return get_active_config(client, application_name, environment_name, profile_name)
             
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFoundException':
-            logger.warning("No existing configuration found")
-            return None, None
-        else:
-            logger.error(f"Error retrieving current configuration: {str(e)}")
-            return None, None
+        logger.error(f"Error retrieving configuration: {str(e)}")
+        return None, None
 
 def create_merged_config(terraform_config, current_config):
     """Create a merged configuration that preserves existing values"""
@@ -233,6 +302,7 @@ def main():
     logger.info(f"Using AppConfig application: {args.app_name}")
     logger.info(f"Using AppConfig environment: {args.env_name}")
     logger.info(f"Using AppConfig profile: {args.profile_name}")
+    logger.info(f"Using latest version from profile: {args.use_latest_version}")
     
     # Load the terraform-defined configuration
     terraform_config = load_terraform_config(args.config_file)
@@ -240,8 +310,14 @@ def main():
     # Initialize the AWS AppConfig client
     client = boto3.client('appconfig')
     
-    # Get the current configuration from AWS AppConfig
-    current_config, current_version = get_current_appconfig(client, args.app_name, args.env_name, args.profile_name)
+    # Get the current configuration from AWS AppConfig (either latest or active)
+    current_config, current_version = get_current_appconfig(
+        client, 
+        args.app_name, 
+        args.env_name, 
+        args.profile_name, 
+        args.use_latest_version
+    )
     
     if not current_config and not args.force_create:
         logger.error("No existing configuration found and --force-create not specified")

@@ -18,6 +18,7 @@ pipeline {
         choice(name: 'DEPLOYMENT_MODE', choices: ['all', 'single'], description: 'Deploy all config files or a single one')
         string(name: 'CONFIG_FILE', defaultValue: 'test_feature_flags2.json', description: 'Name of the feature flags JSON file (used only when DEPLOYMENT_MODE is "single")')
         booleanParam(name: 'MERGE_CONFIGS', defaultValue: true, description: 'Merge with existing AppConfig instead of overwriting')
+        booleanParam(name: 'USE_LATEST_VERSION', defaultValue: true, description: 'Compare with latest version in profile instead of active deployed config')
     }
     
     stages {
@@ -106,12 +107,13 @@ pipeline {
                             # Activate virtual environment
                             . ${env.VENV_PATH}/bin/activate
                             
-                            # Run the merge script
+                            # Run the merge script with the USE_LATEST_VERSION parameter
                             python3 ${env.SCRIPTS_DIR}/merge_appconfig.py \
                                 --config-file ${configFilePath} \
                                 --app-name ${configNameWithoutExt} \
                                 --env-name ${env.BRANCH_NAME} \
                                 --profile-name ${configNameWithoutExt} \
+                                ${params.USE_LATEST_VERSION ? '--use-latest-version' : '--use-latest-version=false'} \
                                 --force-create
                         """
                     }
