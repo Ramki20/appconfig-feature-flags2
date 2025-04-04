@@ -80,7 +80,10 @@ def get_latest_version_config(client, app_id, profile_id):
         # Log all available versions
         logger.info(f"Found {len(versions_response['Items'])} version(s):")
         for v in versions_response['Items']:
-            logger.info(f"  - Version {v['VersionNumber']} created on {v['VersionLabel']}")
+            # Use a safer approach to access fields that might not exist
+            version_number = v.get('VersionNumber', 'unknown')
+            created_time = v.get('VersionLabel', v.get('DateCreated', 'unknown date'))
+            logger.info(f"  - Version {version_number} created: {created_time}")
         
         # Sort versions by version number (descending) to get the latest
         sorted_versions = sorted(
