@@ -201,7 +201,7 @@ def create_merged_config(terraform_config, current_config):
     merged_config = {
         "flags": terraform_config["flags"],
         "values": {},
-        "version": str(int(current_config.get("version", "0")) + 1)
+        "version": int(current_config.get("version", "0")) + 1
     }
     
     # Track changes for logging
