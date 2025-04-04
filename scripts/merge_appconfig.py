@@ -40,6 +40,19 @@ def load_terraform_config(file_path):
         if not all(key in config for key in ["flags", "values"]):
             logger.error(f"Config file {file_path} is missing required keys 'flags' and/or 'values'")
             sys.exit(1)
+        
+        # Log the loaded configuration details
+        logger.info(f"Loaded configuration from {file_path}:")
+        logger.info(f"Number of flags: {len(config['flags'])}")
+        logger.info(f"Number of values: {len(config['values'])}")
+        
+        # Ensure version is an integer if present
+        if "version" in config:
+            try:
+                config["version"] = int(config["version"])
+                logger.info(f"Converted version to integer: {config['version']}")
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert version '{config['version']}' to integer")
             
         return config
     except json.JSONDecodeError as e:
@@ -58,9 +71,16 @@ def get_latest_version_config(client, app_id, profile_id):
             ConfigurationProfileId=profile_id
         )
         
+        logger.info(f"Checking for configuration versions for profile ID: {profile_id}")
+        
         if not versions_response.get('Items'):
             logger.warning(f"No configuration versions found for profile ID: {profile_id}")
             return None, None
+        
+        # Log all available versions
+        logger.info(f"Found {len(versions_response['Items'])} version(s):")
+        for v in versions_response['Items']:
+            logger.info(f"  - Version {v['VersionNumber']} created on {v['VersionLabel']}")
         
         # Sort versions by version number (descending) to get the latest
         sorted_versions = sorted(
@@ -87,10 +107,23 @@ def get_latest_version_config(client, app_id, profile_id):
         
         # Decode the content from bytes to string, then parse JSON
         content = version_content['Content'].read().decode('utf-8')
+        logger.info(f"Raw content retrieved from version {version_number}: {content[:500]}...")
         
         try:
             config = json.loads(content)
             logger.info(f"Retrieved latest configuration version: {version_number}")
+            
+            # Ensure the version is an integer
+            if "version" in config:
+                original_version = config["version"]
+                try:
+                    config["version"] = int(config["version"])
+                    if original_version != config["version"]:
+                        logger.info(f"Converted version from {original_version} to {config['version']}")
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not convert version '{config['version']}' to integer")
+            
+            logger.info(f"Configuration structure: {json.dumps({k: type(v).__name__ for k, v in config.items()})}")
             
             return config, version_number
         except json.JSONDecodeError as e:
@@ -194,6 +227,17 @@ def create_merged_config(terraform_config, current_config):
     # If no current configuration exists, just use the terraform config
     if not current_config:
         logger.info("No existing configuration found, using terraform configuration as-is")
+        
+        # Ensure version is an integer in terraform_config if present
+        if "version" in terraform_config:
+            try:
+                original_version = terraform_config["version"]
+                terraform_config["version"] = int(terraform_config["version"])
+                if original_version != terraform_config["version"]:
+                    logger.info(f"Converted version from {original_version} to {terraform_config['version']} in terraform config")
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert version '{terraform_config['version']}' to integer")
+        
         return terraform_config
     
     # Create a new merged configuration
@@ -201,7 +245,7 @@ def create_merged_config(terraform_config, current_config):
     merged_config = {
         "flags": terraform_config["flags"],
         "values": {},
-        "version": int(current_config.get("version", "0")) + 1
+        "version": int(current_config.get("version", "0")) + 1  # Using integer instead of string for version
     }
     
     # Track changes for logging
@@ -342,7 +386,14 @@ def main():
     with open(output_path, 'w') as f:
         json.dump(merged_config, f, indent=2)
     
+    # Log the merged configuration content
     logger.info(f"Merged configuration written to: {output_path}")
+    logger.info("Merged configuration content:")
+    logger.info(json.dumps(merged_config, indent=2))
+    
+    # Log specific details about the version field
+    logger.info(f"Version field type: {type(merged_config['version']).__name__}")
+    logger.info(f"Version field value: {merged_config['version']}")
     
     # Exit with success code
     sys.exit(0)
