@@ -18,6 +18,9 @@
     "customer_profile_pending_request_button": {
       "name": "customer_profile_pending_request_button"
     },
+	"save_set_aside_request": {
+	  "name": "save_set_aside_request"
+	},
     "valid_auth_ids": {
       "name": "valid_auth_ids",
       "attributes": {
@@ -88,6 +91,9 @@
     "customer_profile_pending_request_button": {
       "enabled": true
     },
+	"save_set_aside_request": {
+	  "enabled": true
+	},
     "valid_auth_ids": {
       "enabled": true,
       "allowed_ids": [
