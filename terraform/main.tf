@@ -15,12 +15,14 @@ locals {
     )
   }
   
-  # Create fixed content for each file with version set to 1
+  # Process each file to ensure proper version field
   fixed_contents = {
     for idx, path in local.config_content_paths : idx => {
-      flags = jsondecode(file(path)).flags
-      values = jsondecode(file(path)).values
-      version = 1
+      content = jsonencode({
+        flags   = jsondecode(file(path)).flags
+        values  = jsondecode(file(path)).values
+        version = 1  # Set version to numeric 1
+      })
     }
   }
 }
@@ -82,17 +84,10 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   }
 }
 
-  # Debug the fixed content structure
+  # Debug the fixed content
   resource "terraform_data" "debug_fixed_content" {
     for_each = local.fixed_contents
-    input    = "Fixed content for file ${each.key}: ${jsonencode(each.value)}"
-  }
-  
-  # Create a local file for each configuration
-  resource "local_file" "fixed_config_files" {
-    for_each = local.fixed_contents
-    filename = "${path.module}/fixed_config_${each.key}.json"
-    content  = jsonencode(each.value)
+    input    = "Fixed content for file ${each.key}: ${substr(each.value.content, 0, 100)}... (truncated)"
   }
 
   # Hosted Configuration Version for each configuration profile
@@ -104,10 +99,8 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
     description              = "Feature flags configuration version ${var.config_version}"
     content_type             = "application/json"
     
-    # Use the temporary fixed file
-    content = file("${path.module}/fixed_config_${each.key}.json")
-    
-    depends_on = [local_file.fixed_config_files]
+    # Use the fixed content directly
+    content = local.fixed_contents[each.key].content
   }
 
 # Deploy Configuration for each configuration profile
