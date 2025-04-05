@@ -146,7 +146,7 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             return None, None
 
 def create_merged_config(terraform_config, current_config, current_version):
-    """Create a merged configuration that preserves existing values"""
+    """Create a merged configuration that preserves existing values but strips metadata"""
     # If no current configuration exists, just use the terraform config
     if not current_config:
         logger.info("No existing configuration found, using terraform configuration as-is")
@@ -171,9 +171,14 @@ def create_merged_config(terraform_config, current_config, current_version):
         flag_def = terraform_config["flags"].get(flag_name, {})
         
         if flag_name in current_config.get("values", {}):
-            # Start with existing values from AWS AppConfig for flags that already exist
-            logger.info(f"Preserving existing values for flag: {flag_name}")
-            merged_config["values"][flag_name] = current_config["values"][flag_name].copy()
+            # Start with a clean slate for values - exclude metadata fields
+            merged_config["values"][flag_name] = {}
+            
+            # Copy over all non-metadata fields from current config
+            for key, value in current_config["values"][flag_name].items():
+                if not key.startswith('_'):  # Skip metadata fields
+                    merged_config["values"][flag_name][key] = value
+            
             preserved_flags.append(flag_name)
             
             # Check for any new attributes that might be in terraform but not in current config
@@ -194,7 +199,11 @@ def create_merged_config(terraform_config, current_config, current_version):
         else:
             # Use default values from Terraform JSON for new flags
             logger.info(f"Adding new flag with default values: {flag_name}")
-            merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"}).copy()
+            # Copy only non-metadata fields
+            merged_config["values"][flag_name] = {}
+            for key, value in terraform_config["values"].get(flag_name, {"enabled": "false"}).items():
+                if not key.startswith('_'):  # Skip metadata fields
+                    merged_config["values"][flag_name][key] = value
     
     # Display detailed log of changes
     if added_flags:
