@@ -160,8 +160,6 @@ pipeline {
                     echo "environment: ${environment}"
                     echo "config_version: ${config_version}"
                     echo "config_file_count: ${config_file_count}"
-                    echo "config_file_names: ${config_file_names}"
-                    echo "config_file_paths: ${config_file_paths}"
                     
                     // Create a map to store Terraform variables
                     def tfVars = [:]
@@ -185,6 +183,9 @@ pipeline {
                         // Adjust the path to be relative to the terraform directory
                         configFilePaths.add("../" + configFilePath.trim())
                     }
+                    
+                    echo "config_file_names: ${config_file_names}"
+                    echo "config_file_paths: ${config_file_paths}"
                     
                     // Add arrays to Terraform vars
                     tfVars.put("config_file_names", configFileNames)
