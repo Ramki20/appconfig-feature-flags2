@@ -93,13 +93,14 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
   content_type             = "application/json"
   
   # Use the merged configuration if it exists, otherwise use the original file
-  # Ensure the version field is a number (1) as required by AWS AppConfig Feature Flags
-  content = jsonencode(
-    merge(
-      jsondecode(file(local.config_content_paths[each.key])),
-      { version = 1 }
-    )
-  )
+  # Explicitly set version field as required by AWS AppConfig
+  content = <<-EOT
+{
+  "flags": ${jsonencode(jsondecode(file(local.config_content_paths[each.key])).flags)},
+  "values": ${jsonencode(jsondecode(file(local.config_content_paths[each.key])).values)},
+  "version": 1
+}
+EOT
 }
 
 # Deploy Configuration for each configuration profile
