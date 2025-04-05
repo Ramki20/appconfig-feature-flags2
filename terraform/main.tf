@@ -81,39 +81,29 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   }
 }
 
-  # Debug the fixed content
-  resource "terraform_data" "debug_fixed_content" {
-    for_each = local.fixed_contents
-    input    = "Fixed content for file ${each.key}: flags=${length(each.value.flags)}, values=${length(each.value.values)}"
-  }
+# Debug the fixed content
+resource "terraform_data" "debug_fixed_content" {
+  for_each = local.fixed_contents
+  input    = "Fixed content for file ${each.key}: flags=${length(each.value.flags)}, values=${length(each.value.values)}"
+}
 
-  # Hosted Configuration Version for each configuration profile
-  resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
-    for_each      = { for idx, file in local.config_files : idx => file }
+# Hosted Configuration Version for each configuration profile
+resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
+  for_each      = { for idx, file in local.config_files : idx => file }
     
-    application_id           = aws_appconfig_application.feature_flags_app[each.key].id
-    configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
-    description              = "Feature flags configuration version ${var.config_version}"
-    content_type             = "application/json"
+  application_id           = aws_appconfig_application.feature_flags_app[each.key].id
+  configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
+  description              = "Feature flags configuration version ${var.config_version}"
+  content_type             = "application/json"
     
-    # Use raw JSON format with direct interpolation and version as a string
-    content = <<-EOT
+  # Use raw JSON format with direct interpolation and version as a string
+  content = <<-EOT
 {
   "flags": ${jsonencode(local.fixed_contents[each.key].flags)},
   "values": ${jsonencode(local.fixed_contents[each.key].values)},
   "version": "1"
 }
 EOT
-  }
-
-# Deploy Configuration for each configuration profile
-resource "aws_appconfig_deployment" "feature_flags_deployment" {
-  for_each      = { for idx, file in local.config_files : idx => file }
-  
-  application_id           = aws_appconfig_application.feature_flags_app[each.key].id
-  configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
-  configuration_version    = aws_appconfig_hosted_configuration_version.feature_flags_version[each.key].version_number
-  deployment_strategy_id   = aws_appconfig_deployment_strategy.quick_deployment.id
-  environment_id           = aws_appconfig_environment.feature_flags_env[each.key].environment_id
-  description              = "Deployment of ${each.value.name} version ${var.config_version} to ${var.environment}"
 }
+
+# Note: Deployment resource has been removed to allow deployment through Angular UI instead

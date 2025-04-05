@@ -146,7 +146,7 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             return None, None
 
 def create_merged_config(terraform_config, current_config, current_version):
-    """Create a merged configuration that preserves existing values"""
+    """Create a merged configuration that preserves existing values and metadata fields"""
     # If no current configuration exists, just use the terraform config
     if not current_config:
         logger.info("No existing configuration found, using terraform configuration as-is")
@@ -176,6 +176,13 @@ def create_merged_config(terraform_config, current_config, current_version):
             merged_config["values"][flag_name] = current_config["values"][flag_name].copy()
             preserved_flags.append(flag_name)
             
+            # Preserve metadata fields for existing flags
+            # These fields typically start with an underscore (_)
+            for key in current_config["values"][flag_name]:
+                if key.startswith('_'):
+                    logger.info(f"Preserving metadata field {key} for flag: {flag_name}")
+                    merged_config["values"][flag_name][key] = current_config["values"][flag_name][key]
+            
             # Check for any new attributes that might be in terraform but not in current config
             if "attributes" in flag_def:
                 for attr_name in flag_def.get("attributes", {}):
@@ -195,6 +202,16 @@ def create_merged_config(terraform_config, current_config, current_version):
             # Use default values from Terraform JSON for new flags
             logger.info(f"Adding new flag with default values: {flag_name}")
             merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"}).copy()
+            
+            # For new flags, we need to simulate metadata fields like _createdAt
+            # AWS AppConfig will add these automatically upon deployment
+            # We're not adding them here to avoid inconsistencies with AWS AppConfig's own behavior
+    
+    # Check if any metadata fields exist at the top level of current_config and preserve them
+    for key in current_config:
+        if key.startswith('_') and key not in merged_config:
+            logger.info(f"Preserving top-level metadata field: {key}")
+            merged_config[key] = current_config[key]
     
     # Display detailed log of changes
     if added_flags:

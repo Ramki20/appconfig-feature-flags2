@@ -18,12 +18,9 @@ output "deployment_strategy_id" {
   value       = aws_appconfig_deployment_strategy.quick_deployment.id
 }
 
-output "deployment_ids" {
-  description = "Map of AWS AppConfig Deployment IDs"
-  value       = { for idx, deployment in aws_appconfig_deployment.feature_flags_deployment : aws_appconfig_application.feature_flags_app[idx].name => deployment.id }
+output "hosted_configuration_versions" {
+  description = "Map of AWS AppConfig Configuration Version Numbers"
+  value       = { for idx, version in aws_appconfig_hosted_configuration_version.feature_flags_version : aws_appconfig_application.feature_flags_app[idx].name => version.version_number }
 }
 
-output "deployment_statuses" {
-  description = "Map of AWS AppConfig Deployment Statuses"
-  value       = { for idx, deployment in aws_appconfig_deployment.feature_flags_deployment : aws_appconfig_application.feature_flags_app[idx].name => deployment.state }
-}
+# Removed deployment_ids and deployment_statuses outputs

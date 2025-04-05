@@ -215,10 +215,11 @@ pipeline {
     
     post {
         success {
-            echo "AWS AppConfig deployment completed successfully!"
+            echo "AWS AppConfig infrastructure setup completed successfully!"
+            echo "Note: Configuration versions have been created but not deployed. Use Angular UI to deploy them."
         }
         failure {
-            echo "AWS AppConfig deployment failed!"
+            echo "AWS AppConfig infrastructure setup failed!"
         }
         always {
             // Clean up workspace
