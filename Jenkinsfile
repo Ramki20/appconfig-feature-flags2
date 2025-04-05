@@ -157,10 +157,6 @@ pipeline {
                     // Debug the config files
                     echo "Config files to process: ${configFiles}"
                     
-                    echo "environment: ${env.BRANCH_NAME}"
-                    echo "config_version: ${env.CONFIG_VERSION}"
-                    echo "config_file_count: ${configFiles.size()}"
-                    
                     // Create a map to store Terraform variables
                     def tfVars = [:]
                     tfVars.put("environment", env.BRANCH_NAME)
@@ -183,9 +179,6 @@ pipeline {
                         // Adjust the path to be relative to the terraform directory
                         configFilePaths.add("../" + configFilePath.trim())
                     }
-                    
-                    echo "configFileNames: ${configFileNames}"
-                    echo "configFilePaths: ${configFilePaths}"
                     
                     // Add arrays to Terraform vars
                     tfVars.put("config_file_names", configFileNames)
