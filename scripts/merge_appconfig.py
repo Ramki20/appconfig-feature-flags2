@@ -6,6 +6,7 @@ import os
 import logging
 import sys
 from botocore.exceptions import ClientError
+import base64
 
 # Set up logging
 logging.basicConfig(
@@ -46,8 +47,50 @@ def load_terraform_config(file_path):
         logger.error(f"Config file {file_path} not found")
         sys.exit(1)
 
+def get_latest_configuration_version(client, app_id, profile_id):
+    """Get the latest configuration version from the profile, regardless of deployment status"""
+    try:
+        # List all versions for this profile
+        response = client.list_hosted_configuration_versions(
+            ApplicationId=app_id,
+            ConfigurationProfileId=profile_id
+        )
+        
+        # If there are no versions, return None
+        if not response.get('Items'):
+            logger.warning(f"No configuration versions found for profile ID: {profile_id}")
+            return None, None
+        
+        # The versions are returned in descending order with the newest first
+        latest_version = response['Items'][0]
+        version_number = latest_version['VersionNumber']
+        
+        # Now get the content of this version
+        content_response = client.get_hosted_configuration_version(
+            ApplicationId=app_id,
+            ConfigurationProfileId=profile_id,
+            VersionNumber=version_number
+        )
+        
+        # Decode the content from bytes to string, then parse JSON
+        content_bytes = content_response['Content']
+        content_string = content_bytes.read().decode('utf-8')
+        
+        try:
+            configuration = json.loads(content_string)
+            logger.info(f"Retrieved latest configuration version: {version_number}")
+            
+            return configuration, version_number
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing configuration content: {str(e)}")
+            return None, None
+            
+    except ClientError as e:
+        logger.error(f"Error retrieving latest configuration version: {str(e)}")
+        return None, None
+
 def get_current_appconfig(client, application_name, environment_name, profile_name):
-    """Get the current configuration from AWS AppConfig"""
+    """Get the current configuration from AWS AppConfig's configuration profile"""
     try:
         # First, get the application ID
         app_response = client.list_applications()
@@ -91,26 +134,8 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             logger.warning(f"Configuration profile '{profile_name}' not found in AWS AppConfig")
             return None, None
         
-        # Finally, get the configuration
-        config_response = client.get_configuration(
-            Application=application_name,
-            Environment=environment_name,
-            Configuration=profile_name,
-            ClientId='appconfig-merger'
-        )
-        
-        # Decode the content from bytes to string, then parse JSON
-        config_content = config_response['Content'].read().decode('utf-8')
-        
-        try:
-            current_config = json.loads(config_content)
-            current_version = config_response['ConfigurationVersion']
-            logger.info(f"Retrieved existing configuration version: {current_version}")
-            
-            return current_config, current_version
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing current configuration: {str(e)}")
-            return None, None
+        # Instead of getting the deployed configuration, get the latest configuration version
+        return get_latest_configuration_version(client, app_id, profile_id)
             
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFoundException':
@@ -240,7 +265,7 @@ def main():
     # Initialize the AWS AppConfig client
     client = boto3.client('appconfig')
     
-    # Get the current configuration from AWS AppConfig
+    # Get the current configuration from AWS AppConfig's configuration profile
     current_config, current_version = get_current_appconfig(client, args.app_name, args.env_name, args.profile_name)
     
     if not current_config and not args.force_create:
@@ -266,7 +291,10 @@ def main():
     with open(output_path, 'w') as f:
         json.dump(merged_config, f, indent=2)
     
+    # Log the merged JSON contents for debugging
     logger.info(f"Merged configuration written to: {output_path}")
+    logger.info("Merged JSON contents:")
+    logger.info(json.dumps(merged_config, indent=2))
     
     # Exit with success code
     sys.exit(0)
