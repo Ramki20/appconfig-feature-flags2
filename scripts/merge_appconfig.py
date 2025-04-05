@@ -157,7 +157,7 @@ def create_merged_config(terraform_config, current_config, current_version):
     merged_config = {
         "flags": terraform_config["flags"],
         "values": {},
-        "version": 1  # AWS AppConfig Feature Flags requires a numeric value for version
+        "version": "1"  # AWS AppConfig Feature Flags requires version as a string
     }
     
     # Track changes for logging
@@ -227,7 +227,7 @@ def create_merged_config(terraform_config, current_config, current_version):
     if attr_modified_flags:
         logger.info(f"Flags with attributes being removed: {json.dumps(attr_modified_flags)}")
     
-    logger.info(f"Configuration version updated from {current_version} to 1 (AWS requires version as numeric value)")
+    logger.info(f"Configuration version updated from {current_version} to \"1\" (AWS requires version as a string value)")
     
     # Perform a final validation check
     if len(merged_config["flags"]) != len(merged_config["values"]):

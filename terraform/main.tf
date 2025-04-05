@@ -96,7 +96,7 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
     description              = "Feature flags configuration version ${var.config_version}"
     content_type             = "application/json"
     
-    # Use raw JSON format with direct interpolation and explicit version = 1
+    # Use raw JSON format with direct interpolation and version as a string
     content = <<-EOT
 {
   "flags": ${jsonencode(local.fixed_contents[each.key].flags)},
