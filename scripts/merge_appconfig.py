@@ -145,7 +145,7 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             logger.error(f"Error retrieving current configuration: {str(e)}")
             return None, None
 
-def create_merged_config(terraform_config, current_config):
+def create_merged_config(terraform_config, current_config, current_version):
     """Create a merged configuration that preserves existing values"""
     # If no current configuration exists, just use the terraform config
     if not current_config:
@@ -157,7 +157,7 @@ def create_merged_config(terraform_config, current_config):
     merged_config = {
         "flags": terraform_config["flags"],
         "values": {},
-        "version": str(int(current_config.get("version", "0")) + 1)
+        "version": str(int(current_version) + 1)  # Use the latest version number from AWS
     }
     
     # Track changes for logging
@@ -227,7 +227,7 @@ def create_merged_config(terraform_config, current_config):
     if attr_modified_flags:
         logger.info(f"Flags with attributes being removed: {json.dumps(attr_modified_flags)}")
     
-    logger.info(f"Configuration version updated from {current_config.get('version', '0')} to {merged_config['version']}")
+    logger.info(f"Configuration version updated from {current_version} to {merged_config['version']}")
     
     # Perform a final validation check
     if len(merged_config["flags"]) != len(merged_config["values"]):
@@ -279,7 +279,7 @@ def main():
         merged_config = terraform_config
     else:
         # Create the merged configuration
-        merged_config = create_merged_config(terraform_config, current_config)
+        merged_config = create_merged_config(terraform_config, current_config, current_version or "0")
     
     # Determine the output file path
     if args.output_file:
