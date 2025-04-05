@@ -126,6 +126,17 @@ def get_latest_version_config(client, app_id, profile_id):
                 except (ValueError, TypeError):
                     logger.warning(f"Could not convert version '{config['version']}' to integer")
             
+            # Clean any metadata fields in values
+            if "values" in config:
+                for flag_name, flag_values in config["values"].items():
+                    metadata_fields = [k for k in flag_values.keys() if k.startswith('_')]
+                    if metadata_fields:
+                        logger.info(f"Found metadata fields in flag '{flag_name}': {metadata_fields}")
+                        # Remove metadata fields
+                        for field in metadata_fields:
+                            logger.info(f"Removing metadata field '{field}' from flag '{flag_name}'")
+                            del config["values"][flag_name][field]
+            
             logger.info(f"Configuration structure: {json.dumps({k: type(v).__name__ for k, v in config.items()})}")
             
             return config, version_number
@@ -154,6 +165,17 @@ def get_active_config(client, application_name, environment_name, profile_name):
             current_config = json.loads(config_content)
             current_version = config_response['ConfigurationVersion']
             logger.info(f"Retrieved active deployed configuration version: {current_version}")
+            
+            # Log and clean any metadata fields in values
+            if "values" in current_config:
+                for flag_name, flag_values in current_config["values"].items():
+                    metadata_fields = [k for k in flag_values.keys() if k.startswith('_')]
+                    if metadata_fields:
+                        logger.info(f"Found metadata fields in flag '{flag_name}': {metadata_fields}")
+                        # Remove metadata fields
+                        for field in metadata_fields:
+                            logger.info(f"Removing metadata field '{field}' from flag '{flag_name}'")
+                            del current_config["values"][flag_name][field]
             
             return current_config, current_version
         except json.JSONDecodeError as e:
@@ -264,7 +286,14 @@ def create_merged_config(terraform_config, current_config):
         if flag_name in current_config.get("values", {}):
             # Start with existing values from AWS AppConfig for flags that already exist
             logger.info(f"Preserving existing values for flag: {flag_name}")
-            merged_config["values"][flag_name] = current_config["values"][flag_name].copy()
+            
+            # Create a clean copy without metadata fields
+            merged_config["values"][flag_name] = {}
+            for key, value in current_config["values"][flag_name].items():
+                # Skip metadata fields that start with underscore
+                if not key.startswith('_'):
+                    merged_config["values"][flag_name][key] = value
+            
             preserved_flags.append(flag_name)
             
             # Check for any new attributes that might be in terraform but not in current config
@@ -285,7 +314,12 @@ def create_merged_config(terraform_config, current_config):
         else:
             # Use default values from Terraform JSON for new flags
             logger.info(f"Adding new flag with default values: {flag_name}")
-            merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"}).copy()
+            
+            # Create a clean copy of values without metadata fields (just in case)
+            merged_config["values"][flag_name] = {}
+            for key, value in terraform_config["values"].get(flag_name, {"enabled": "false"}).items():
+                if not key.startswith('_'):
+                    merged_config["values"][flag_name][key] = value
     
     # Display detailed log of changes
     if added_flags:
@@ -387,6 +421,14 @@ def main():
     
     # Write the merged configuration to the output file
     with open(output_path, 'w') as f:
+        # Final check for any remaining metadata fields
+        if "values" in merged_config:
+            for flag_name, flag_values in list(merged_config["values"].items()):
+                for key in list(flag_values.keys()):
+                    if key.startswith('_'):
+                        logger.warning(f"Removing unexpected metadata field '{key}' from flag '{flag_name}' in final output")
+                        del merged_config["values"][flag_name][key]
+        
         json.dump(merged_config, f, indent=2)
     
     # Log the merged configuration content
