@@ -95,9 +95,10 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
   # Use the merged configuration if it exists, otherwise use the original file
   # Ensure the version field is a number (1) as required by AWS AppConfig Feature Flags
   content = jsonencode(
-    jsondecode(
-      file(local.config_content_paths[each.key])
-    ) + { version = 1 }
+    merge(
+      jsondecode(file(local.config_content_paths[each.key])),
+      { version = 1 }
+    )
   )
 }
 
