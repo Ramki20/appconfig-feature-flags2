@@ -157,6 +157,12 @@ pipeline {
                     // Debug the config files
                     echo "Config files to process: ${configFiles}"
                     
+                    echo "environment: ${environment}"
+                    echo "config_version: ${config_version}"
+                    echo "config_file_count: ${config_file_count}"
+                    echo "config_file_names: ${config_file_names}"
+                    echo "config_file_paths: ${config_file_paths}"
+                    
                     // Create a map to store Terraform variables
                     def tfVars = [:]
                     tfVars.put("environment", env.BRANCH_NAME)
