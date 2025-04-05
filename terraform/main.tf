@@ -14,6 +14,15 @@ locals {
       fileexists(file.merged_path) ? file.merged_path : file.path
     )
   }
+  
+  # Create fixed content for each file with version set to 1
+  fixed_contents = {
+    for idx, path in local.config_content_paths : idx => {
+      flags = jsondecode(file(path)).flags
+      values = jsondecode(file(path)).values
+      version = 1
+    }
+  }
 }
 
 # AWS AppConfig Deployment Strategy (shared across all deployments)
@@ -73,35 +82,33 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   }
 }
 
-resource "terraform_data" "debug" {
-  input = "Debug value-local.config_content_paths: ${jsonencode(local.config_content_paths[0])}"
-}
-
-# Log the content of each config file
-resource "terraform_data" "debug_config_content" {
-  for_each = local.config_content_paths
-  input    = "Config file ${each.key} contents: ${file(each.value)}"
-}
-
-# Hosted Configuration Version for each configuration profile
-resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
-  for_each      = { for idx, file in local.config_files : idx => file }
+  # Debug the fixed content structure
+  resource "terraform_data" "debug_fixed_content" {
+    for_each = local.fixed_contents
+    input    = "Fixed content for file ${each.key}: ${jsonencode(each.value)}"
+  }
   
-  application_id           = aws_appconfig_application.feature_flags_app[each.key].id
-  configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
-  description              = "Feature flags configuration version ${var.config_version}"
-  content_type             = "application/json"
-  
-  # Use the merged configuration if it exists, otherwise use the original file
-  # Explicitly set version field as required by AWS AppConfig
-  content = <<-EOT
-{
-  "flags": ${jsonencode(jsondecode(file(local.config_content_paths[each.key])).flags)},
-  "values": ${jsonencode(jsondecode(file(local.config_content_paths[each.key])).values)},
-  "version": 1
-}
-EOT
-}
+  # Create a local file for each configuration
+  resource "local_file" "fixed_config_files" {
+    for_each = local.fixed_contents
+    filename = "${path.module}/fixed_config_${each.key}.json"
+    content  = jsonencode(each.value)
+  }
+
+  # Hosted Configuration Version for each configuration profile
+  resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
+    for_each      = { for idx, file in local.config_files : idx => file }
+    
+    application_id           = aws_appconfig_application.feature_flags_app[each.key].id
+    configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
+    description              = "Feature flags configuration version ${var.config_version}"
+    content_type             = "application/json"
+    
+    # Use the temporary fixed file
+    content = file("${path.module}/fixed_config_${each.key}.json")
+    
+    depends_on = [local_file.fixed_config_files]
+  }
 
 # Deploy Configuration for each configuration profile
 resource "aws_appconfig_deployment" "feature_flags_deployment" {
