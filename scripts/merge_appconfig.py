@@ -116,16 +116,6 @@ def get_latest_version_config(client, app_id, profile_id):
             config = json.loads(content)
             logger.info(f"Retrieved latest configuration version: {version_number}")
             
-            # Ensure the version is an integer
-            if "version" in config:
-                original_version = config["version"]
-                try:
-                    config["version"] = int(config["version"])
-                    if original_version != config["version"]:
-                        logger.info(f"Converted version from {original_version} to {config['version']}")
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not convert version '{config['version']}' to integer")
-            
             # Clean any metadata fields in values
             if "values" in config:
                 for flag_name, flag_values in config["values"].items():
@@ -252,17 +242,6 @@ def create_merged_config(terraform_config, current_config):
     # If no current configuration exists, just use the terraform config
     if not current_config:
         logger.info("No existing configuration found, using terraform configuration as-is")
-        
-        # Ensure version is an integer in terraform_config if present
-        if "version" in terraform_config:
-            try:
-                original_version = terraform_config["version"]
-                terraform_config["version"] = int(terraform_config["version"])
-                if original_version != terraform_config["version"]:
-                    logger.info(f"Converted version from {original_version} to {terraform_config['version']} in terraform config")
-            except (ValueError, TypeError):
-                logger.warning(f"Could not convert version '{terraform_config['version']}' to integer")
-        
         return terraform_config
     
     # Create a new merged configuration
@@ -270,7 +249,8 @@ def create_merged_config(terraform_config, current_config):
     merged_config = {
         "flags": terraform_config["flags"],
         "values": {},
-        "version": int(current_config.get("version", "0")) + 1  # Using integer instead of string for version
+     #  "version": int(current_config.get("version", "0")) + 1  # Using integer instead of string for version
+        "version": str(int(current_config.get("version", "0")) + 1)
     }
     
     # Track changes for logging
