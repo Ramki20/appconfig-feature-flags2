@@ -145,6 +145,20 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             logger.error(f"Error retrieving current configuration: {str(e)}")
             return None, None
 
+def normalize_json_structure(config_dict):
+    """Ensure consistent ordering of keys in JSON"""
+    if isinstance(config_dict, dict):
+        # Sort dictionary keys
+        return {k: normalize_json_structure(config_dict[k]) for k in sorted(config_dict.keys())}
+    elif isinstance(config_dict, list):
+        # Sort lists if they contain primitive values
+        if all(not isinstance(item, (dict, list)) for item in config_dict):
+            return sorted(config_dict)
+        else:
+            return [normalize_json_structure(item) for item in config_dict]
+    else:
+        return config_dict
+
 def create_merged_config(terraform_config, current_config, current_version):
     """Create a merged configuration that preserves existing values but strips metadata"""
     # If no current configuration exists, just use the terraform config
@@ -177,7 +191,17 @@ def create_merged_config(terraform_config, current_config, current_version):
             # Copy over all non-metadata fields from current config
             for key, value in current_config["values"][flag_name].items():
                 if not key.startswith('_'):  # Skip metadata fields
-                    merged_config["values"][flag_name][key] = value
+                    # Convert boolean string values to ensure consistency
+                    if key == "enabled" and isinstance(value, str):
+                        # Convert string "true"/"false" to boolean
+                        if value.lower() == "true":
+                            merged_config["values"][flag_name][key] = True
+                        elif value.lower() == "false":
+                            merged_config["values"][flag_name][key] = False
+                        else:
+                            merged_config["values"][flag_name][key] = value
+                    else:
+                        merged_config["values"][flag_name][key] = value
             
             preserved_flags.append(flag_name)
             
@@ -203,7 +227,16 @@ def create_merged_config(terraform_config, current_config, current_version):
             merged_config["values"][flag_name] = {}
             for key, value in terraform_config["values"].get(flag_name, {"enabled": "false"}).items():
                 if not key.startswith('_'):  # Skip metadata fields
-                    merged_config["values"][flag_name][key] = value
+                    # Convert boolean string values for consistency
+                    if key == "enabled" and isinstance(value, str):
+                        if value.lower() == "true":
+                            merged_config["values"][flag_name][key] = True
+                        elif value.lower() == "false":
+                            merged_config["values"][flag_name][key] = False
+                        else:
+                            merged_config["values"][flag_name][key] = value
+                    else:
+                        merged_config["values"][flag_name][key] = value
     
     # Display detailed log of changes
     if added_flags:
@@ -255,7 +288,17 @@ def create_merged_config(terraform_config, current_config, current_version):
         
         sys.exit(1)
     
-    return merged_config
+    # Normalize the structure to ensure consistent ordering
+    return normalize_json_structure(merged_config)
+
+def strip_metadata(config):
+    """Strip metadata fields for comparison"""
+    if isinstance(config, dict):
+        return {k: strip_metadata(v) for k, v in config.items() if not k.startswith('_')}
+    elif isinstance(config, list):
+        return [strip_metadata(item) for item in config]
+    else:
+        return config
 
 def main():
     args = parse_arguments()
@@ -282,19 +325,47 @@ def main():
         logger.error("Exiting without making changes")
         sys.exit(1)
     
-    # If no current config and force create is set, use terraform config as-is
-    if not current_config and args.force_create:
-        logger.info("Creating new configuration from terraform file")
-        merged_config = terraform_config
-    else:
-        # Create the merged configuration
-        merged_config = create_merged_config(terraform_config, current_config, current_version or "0")
-    
     # Determine the output file path
     if args.output_file:
         output_path = args.output_file
     else:
         output_path = f"{args.config_file}.merged.json"
+    
+    # If no current config and force create is set, use terraform config as-is
+    if not current_config and args.force_create:
+        logger.info("Creating new configuration from terraform file")
+        merged_config = normalize_json_structure(terraform_config)
+    else:
+        # Create the merged configuration
+        merged_config = create_merged_config(terraform_config, current_config, current_version or "0")
+    
+    # Check if we need to update the file at all by comparing with existing
+    if os.path.exists(output_path):
+        with open(output_path, 'r') as f:
+            try:
+                existing_merged = json.load(f)
+                
+                # Strip metadata for comparison
+                existing_stripped = strip_metadata(existing_merged)
+                merged_stripped = strip_metadata(merged_config)
+                
+                # If they're identical after stripping metadata, don't update
+                if json.dumps(existing_stripped, sort_keys=True) == json.dumps(merged_stripped, sort_keys=True):
+                    logger.info("No functional changes detected, skipping file update")
+                    sys.exit(0)
+                else:
+                    # Debug what's different
+                    if args.debug:
+                        for flag in set(existing_stripped.get("values", {}).keys()) & set(merged_stripped.get("values", {}).keys()):
+                            existing_flag = existing_stripped["values"].get(flag, {})
+                            merged_flag = merged_stripped["values"].get(flag, {})
+                            
+                            if existing_flag != merged_flag:
+                                logger.debug(f"Difference in flag {flag}:")
+                                logger.debug(f"  Existing: {existing_flag}")
+                                logger.debug(f"  New: {merged_flag}")
+            except Exception as e:
+                logger.warning(f"Failed to compare with existing file, continuing with update: {str(e)}")
     
     # Write the merged configuration to the output file
     with open(output_path, 'w') as f:
