@@ -74,7 +74,13 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
 }
 
 resource "terraform_data" "debug" {
-  input = "Debug value-local.config_content_paths: ${jsonencode(local.config_content_paths)}"
+  input = "Debug value-local.config_content_paths: ${jsonencode(local.config_content_paths[0])}"
+}
+
+# Log the content of each config file
+resource "terraform_data" "debug_config_content" {
+  for_each = local.config_content_paths
+  input    = "Config file ${each.key} contents: ${file(each.value)}"
 }
 
 # Hosted Configuration Version for each configuration profile
