@@ -32,7 +32,7 @@ pipeline {
             steps {
                 script {
                     env.BRANCH_NAME = 'dev'
-                    env.CONFIG_VERSION = 1
+                    env.CONFIG_VERSION = '1'
                     
                     // Make the merge script executable if it exists
                     sh "chmod +x ${env.SCRIPTS_DIR}/merge_appconfig.py || echo 'Script not found, will be created later'"
