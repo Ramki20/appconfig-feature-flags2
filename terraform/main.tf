@@ -101,7 +101,7 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
 {
   "flags": ${jsonencode(local.fixed_contents[each.key].flags)},
   "values": ${jsonencode(local.fixed_contents[each.key].values)},
-  "version": 1
+  "version": "1"
 }
 EOT
   }
