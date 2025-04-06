@@ -7,6 +7,8 @@ import logging
 import sys
 from botocore.exceptions import ClientError
 import base64
+import hashlib
+import tempfile
 
 # Set up logging
 logging.basicConfig(
@@ -145,6 +147,52 @@ def get_current_appconfig(client, application_name, environment_name, profile_na
             logger.error(f"Error retrieving current configuration: {str(e)}")
             return None, None
 
+def normalize_for_comparison(obj):
+    """Normalize object for comparison by removing metadata fields"""
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            # Skip metadata fields starting with underscore for comparison
+            if not key.startswith('_'):
+                result[key] = normalize_for_comparison(value)
+        return result
+    elif isinstance(obj, list):
+        return [normalize_for_comparison(item) for item in obj]
+    else:
+        return obj
+
+def configs_are_functionally_equivalent(config1, config2):
+    """Compare two configurations, ignoring metadata fields"""
+    # Create normalized versions for comparison
+    normalized1 = {
+        "flags": normalize_for_comparison(config1.get("flags", {})),
+        "values": normalize_for_comparison(config1.get("values", {})),
+        "version": normalize_for_comparison(config1.get("version", ""))
+    }
+    
+    normalized2 = {
+        "flags": normalize_for_comparison(config2.get("flags", {})),
+        "values": normalize_for_comparison(config2.get("values", {})),
+        "version": normalize_for_comparison(config2.get("version", ""))
+    }
+    
+    # Convert to JSON strings for comparison (ensures consistent ordering)
+    json_str1 = json.dumps(normalized1, sort_keys=True)
+    json_str2 = json.dumps(normalized2, sort_keys=True)
+    
+    # Calculate hash for efficient comparison
+    hash1 = hashlib.md5(json_str1.encode()).hexdigest()
+    hash2 = hashlib.md5(json_str2.encode()).hexdigest()
+    
+    are_equivalent = hash1 == hash2
+    
+    if are_equivalent:
+        logger.info("Configurations are functionally equivalent (ignoring metadata)")
+    else:
+        logger.info("Configurations are different")
+        
+    return are_equivalent
+
 def create_merged_config(terraform_config, current_config, current_version):
     """Create a merged configuration that preserves existing values and metadata fields"""
     # If no current configuration exists, just use the terraform config
@@ -265,6 +313,20 @@ def create_merged_config(terraform_config, current_config, current_version):
     
     return merged_config
 
+def check_existing_merged_file(output_path, merged_config):
+    """Check if the existing merged file is functionally equivalent to the new one"""
+    if os.path.exists(output_path):
+        try:
+            with open(output_path, 'r') as f:
+                existing_config = json.load(f)
+                
+            # Compare the configs, ignoring metadata fields
+            return configs_are_functionally_equivalent(existing_config, merged_config)
+        except Exception as e:
+            logger.warning(f"Error comparing with existing file: {str(e)}")
+            return False
+    return False
+
 def main():
     args = parse_arguments()
     
@@ -304,14 +366,32 @@ def main():
     else:
         output_path = f"{args.config_file}.merged.json"
     
-    # Write the merged configuration to the output file
-    with open(output_path, 'w') as f:
-        json.dump(merged_config, f, indent=2)
+    # Check if the merged configuration is functionally equivalent to the existing one
+    if check_existing_merged_file(output_path, merged_config):
+        logger.info(f"No functional changes detected. Reusing existing merged file: {output_path}")
+    else:
+        # Write to a temporary file first
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+            json.dump(merged_config, temp_file, indent=2)
+            temp_path = temp_file.name
+        
+        # Then rename to target file (atomic operation)
+        try:
+            os.replace(temp_path, output_path)
+            logger.info(f"Merged configuration written to: {output_path}")
+        except Exception as e:
+            logger.error(f"Error writing merged configuration: {str(e)}")
+            try:
+                os.unlink(temp_path)  # Clean up temp file
+            except:
+                pass
+            sys.exit(1)
     
     # Log the merged JSON contents for debugging
-    logger.info(f"Merged configuration written to: {output_path}")
     logger.info("Merged JSON contents:")
-    logger.info(json.dumps(merged_config, indent=2))
+    with open(output_path, 'r') as f:
+        config_content = f.read()
+        logger.info(config_content)
     
     # Exit with success code
     sys.exit(0)
