@@ -107,13 +107,7 @@ pipeline {
                             . ${env.VENV_PATH}/bin/activate
                             
                             # Run the merge script
-                            python3 ${env.SCRIPTS_DIR}/merge_appconfig.py \
-                                --config-file ${configFilePath} \
-                                --app-name ${configNameWithoutExt} \
-                                --env-name ${env.BRANCH_NAME} \
-                                --profile-name ${configNameWithoutExt} \
-    							--debug \                                
-                                --force-create
+                            python3 ${env.SCRIPTS_DIR}/merge_appconfig.py --config-file ${configFilePath} --app-name ${configNameWithoutExt} --env-name ${env.BRANCH_NAME} --profile-name ${configNameWithoutExt} --debug --force-create
                         """
                     }
                 }
