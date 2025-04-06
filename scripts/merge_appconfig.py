@@ -8,8 +8,8 @@ import sys
 from botocore.exceptions import ClientError
 import base64
 import hashlib
-import tempfile
 import shutil
+import datetime
 
 # Set up logging
 logging.basicConfig(
@@ -28,6 +28,7 @@ def parse_arguments():
     parser.add_argument('--force-create', action='store_true', help='Force create new configuration if none exists')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('--output-file', help='Path to write the merged configuration (defaults to same as input with .merged.json suffix)')
+    parser.add_argument('--force-write', action='store_true', help='Force write even if no functional changes')
     
     return parser.parse_args()
 
@@ -158,7 +159,13 @@ def normalize_for_comparison(obj):
                 result[key] = normalize_for_comparison(value)
         return result
     elif isinstance(obj, list):
-        return [normalize_for_comparison(item) for item in obj]
+        # Sort lists to ensure consistent ordering
+        if all(isinstance(item, (int, float, str, bool)) for item in obj):
+            # For simple types, just sort the list
+            return sorted(obj)
+        else:
+            # For complex types, normalize each item and return (can't sort complex objects)
+            return [normalize_for_comparison(item) for item in obj]
     else:
         return obj
 
@@ -181,6 +188,41 @@ def configs_are_functionally_equivalent(config1, config2):
     json_str1 = json.dumps(normalized1, sort_keys=True)
     json_str2 = json.dumps(normalized2, sort_keys=True)
     
+    # Debug output to help identify differences
+    if json_str1 != json_str2:
+        logger.info("Functional differences detected in configurations:")
+        # First, check if the flag definitions are different
+        if json.dumps(normalized1["flags"], sort_keys=True) != json.dumps(normalized2["flags"], sort_keys=True):
+            logger.info("  - Flag definitions are different")
+        
+        # Then check if the values (ignoring metadata) are different
+        if json.dumps(normalized1["values"], sort_keys=True) != json.dumps(normalized2["values"], sort_keys=True):
+            logger.info("  - Flag values are different")
+            
+            # Find specific flags that differ
+            flags1 = set(normalized1["values"].keys())
+            flags2 = set(normalized2["values"].keys())
+            
+            if flags1 != flags2:
+                added = flags1 - flags2
+                removed = flags2 - flags1
+                if added:
+                    logger.info(f"    - Added flags: {added}")
+                if removed:
+                    logger.info(f"    - Removed flags: {removed}")
+                    
+            # For flags in both configs, check if values differ
+            common_flags = flags1.intersection(flags2)
+            for flag in common_flags:
+                val1 = normalized1["values"].get(flag, {})
+                val2 = normalized2["values"].get(flag, {})
+                if json.dumps(val1, sort_keys=True) != json.dumps(val2, sort_keys=True):
+                    logger.info(f"    - Flag '{flag}' has different values")
+                    
+        # Check if version is different
+        if normalized1["version"] != normalized2["version"]:
+            logger.info(f"  - Version differs: {normalized1['version']} vs {normalized2['version']}")
+    
     # Calculate hash for efficient comparison
     hash1 = hashlib.md5(json_str1.encode()).hexdigest()
     hash2 = hashlib.md5(json_str2.encode()).hexdigest()
@@ -190,7 +232,11 @@ def configs_are_functionally_equivalent(config1, config2):
     if are_equivalent:
         logger.info("Configurations are functionally equivalent (ignoring metadata)")
     else:
-        logger.info("Configurations are different")
+        logger.info("Configurations are functionally different")
+        
+    # Debug output to help diagnose issues
+    logger.info(f"Hash of normalized config1: {hash1}")
+    logger.info(f"Hash of normalized config2: {hash2}")
         
     return are_equivalent
 
@@ -251,10 +297,6 @@ def create_merged_config(terraform_config, current_config, current_version):
             # Use default values from Terraform JSON for new flags
             logger.info(f"Adding new flag with default values: {flag_name}")
             merged_config["values"][flag_name] = terraform_config["values"].get(flag_name, {"enabled": "false"}).copy()
-            
-            # For new flags, we need to simulate metadata fields like _createdAt
-            # AWS AppConfig will add these automatically upon deployment
-            # We're not adding them here to avoid inconsistencies with AWS AppConfig's own behavior
     
     # Check if any metadata fields exist at the top level of current_config and preserve them
     for key in current_config:
@@ -321,12 +363,16 @@ def check_existing_merged_file(output_path, merged_config):
             with open(output_path, 'r') as f:
                 existing_config = json.load(f)
                 
+            logger.info(f"Comparing with existing merged file: {output_path}")
+            
             # Compare the configs, ignoring metadata fields
             return configs_are_functionally_equivalent(existing_config, merged_config)
         except Exception as e:
             logger.warning(f"Error comparing with existing file: {str(e)}")
             return False
-    return False
+    else:
+        logger.info(f"No existing merged file found at: {output_path}")
+        return False
 
 def safely_write_file(content, output_path):
     """Write content to file in a way that works across filesystems"""
@@ -404,9 +450,14 @@ def main():
         output_path = f"{args.config_file}.merged.json"
     
     # Check if the merged configuration is functionally equivalent to the existing one
-    if check_existing_merged_file(output_path, merged_config):
+    no_changes = check_existing_merged_file(output_path, merged_config)
+    
+    if no_changes and not args.force_write:
         logger.info(f"No functional changes detected. Reusing existing merged file: {output_path}")
     else:
+        if no_changes:
+            logger.info(f"No functional changes detected, but forcing write due to --force-write flag")
+        
         # Write the merged configuration safely to the output file
         if safely_write_file(merged_config, output_path):
             logger.info(f"Merged configuration written to: {output_path}")
@@ -415,9 +466,12 @@ def main():
     
     # Log the merged JSON contents for debugging
     logger.info("Merged JSON contents:")
-    with open(output_path, 'r') as f:
-        config_content = f.read()
-        logger.info(config_content)
+    try:
+        with open(output_path, 'r') as f:
+            config_content = f.read()
+            logger.info(config_content)
+    except Exception as e:
+        logger.error(f"Error reading merged configuration: {str(e)}")
     
     # Exit with success code
     sys.exit(0)

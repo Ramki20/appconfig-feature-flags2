@@ -112,6 +112,7 @@ pipeline {
                                 --app-name ${configNameWithoutExt} \
                                 --env-name ${env.BRANCH_NAME} \
                                 --profile-name ${configNameWithoutExt} \
+    							--debug \                                
                                 --force-create
                         """
                     }
