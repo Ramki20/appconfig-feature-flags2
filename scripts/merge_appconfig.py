@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 import base64
 import hashlib
 import tempfile
+import shutil
 
 # Set up logging
 logging.basicConfig(
@@ -327,6 +328,42 @@ def check_existing_merged_file(output_path, merged_config):
             return False
     return False
 
+def safely_write_file(content, output_path):
+    """Write content to file in a way that works across filesystems"""
+    # Create a temporary file in the same directory as the output file
+    # This avoids cross-device link errors
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        try:
+            os.makedirs(output_dir)
+        except Exception as e:
+            logger.error(f"Failed to create directory {output_dir}: {str(e)}")
+            sys.exit(1)
+    
+    # Use a temporary file in the same directory
+    temp_path = f"{output_path}.tmp"
+    try:
+        with open(temp_path, 'w') as f:
+            json.dump(content, f, indent=2)
+        
+        # Replace the target file with the temporary one
+        # First remove the target file if it exists
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        
+        # Then rename the temporary file
+        os.rename(temp_path, output_path)
+        return True
+    except Exception as e:
+        logger.error(f"Error writing file: {str(e)}")
+        # Clean up the temporary file if it exists
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        return False
+
 def main():
     args = parse_arguments()
     
@@ -370,21 +407,10 @@ def main():
     if check_existing_merged_file(output_path, merged_config):
         logger.info(f"No functional changes detected. Reusing existing merged file: {output_path}")
     else:
-        # Write to a temporary file first
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            json.dump(merged_config, temp_file, indent=2)
-            temp_path = temp_file.name
-        
-        # Then rename to target file (atomic operation)
-        try:
-            os.replace(temp_path, output_path)
+        # Write the merged configuration safely to the output file
+        if safely_write_file(merged_config, output_path):
             logger.info(f"Merged configuration written to: {output_path}")
-        except Exception as e:
-            logger.error(f"Error writing merged configuration: {str(e)}")
-            try:
-                os.unlink(temp_path)  # Clean up temp file
-            except:
-                pass
+        else:
             sys.exit(1)
     
     # Log the merged JSON contents for debugging
