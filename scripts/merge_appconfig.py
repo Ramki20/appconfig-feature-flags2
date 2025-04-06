@@ -356,23 +356,26 @@ def create_merged_config(terraform_config, current_config, current_version):
     
     return merged_config
 
-def check_existing_merged_file(output_path, merged_config):
-    """Check if the existing merged file is functionally equivalent to the new one"""
+def load_existing_merged_file(output_path):
+    """Load the existing merged file, if it exists"""
     if os.path.exists(output_path):
         try:
             with open(output_path, 'r') as f:
-                existing_config = json.load(f)
-                
-            logger.info(f"Comparing with existing merged file: {output_path}")
-            
-            # Compare the configs, ignoring metadata fields
-            return configs_are_functionally_equivalent(existing_config, merged_config)
+                logger.info(f"Loading existing merged file: {output_path}")
+                return json.load(f)
         except Exception as e:
-            logger.warning(f"Error comparing with existing file: {str(e)}")
-            return False
+            logger.warning(f"Error loading existing file {output_path}: {str(e)}")
+            return None
     else:
         logger.info(f"No existing merged file found at: {output_path}")
+        return None
+
+def check_configs_are_equivalent(merged_config, existing_config):
+    """Check if two configurations are functionally equivalent"""
+    if existing_config is None:
         return False
+    
+    return configs_are_functionally_equivalent(merged_config, existing_config)
 
 def safely_write_file(content, output_path):
     """Write content to file in a way that works across filesystems"""
@@ -385,6 +388,15 @@ def safely_write_file(content, output_path):
         except Exception as e:
             logger.error(f"Failed to create directory {output_dir}: {str(e)}")
             sys.exit(1)
+    
+    # Make an additional backup of the existing file if it exists
+    if os.path.exists(output_path):
+        backup_path = f"{output_path}.bak"
+        try:
+            shutil.copy2(output_path, backup_path)
+            logger.info(f"Created backup of existing file at: {backup_path}")
+        except Exception as e:
+            logger.warning(f"Could not create backup file: {str(e)}")
     
     # Use a temporary file in the same directory
     temp_path = f"{output_path}.tmp"
@@ -399,6 +411,7 @@ def safely_write_file(content, output_path):
         
         # Then rename the temporary file
         os.rename(temp_path, output_path)
+        logger.info(f"Successfully wrote configuration to: {output_path}")
         return True
     except Exception as e:
         logger.error(f"Error writing file: {str(e)}")
@@ -414,6 +427,7 @@ def main():
     args = parse_arguments()
     
     if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
     
     logger.info(f"Processing configuration file: {args.config_file}")
@@ -449,14 +463,19 @@ def main():
     else:
         output_path = f"{args.config_file}.merged.json"
     
-    # Check if the merged configuration is functionally equivalent to the existing one
-    no_changes = check_existing_merged_file(output_path, merged_config)
+    # First check if the output path exists
+    existing_config = load_existing_merged_file(output_path)
+    
+    # Check if configurations are equivalent
+    no_changes = check_configs_are_equivalent(merged_config, existing_config)
     
     if no_changes and not args.force_write:
         logger.info(f"No functional changes detected. Reusing existing merged file: {output_path}")
     else:
         if no_changes:
             logger.info(f"No functional changes detected, but forcing write due to --force-write flag")
+        else:
+            logger.info(f"Functional changes detected. Writing new merged file.")
         
         # Write the merged configuration safely to the output file
         if safely_write_file(merged_config, output_path):
