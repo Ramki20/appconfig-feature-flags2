@@ -85,34 +85,39 @@ pipeline {
             }
         }
         
-        stage('Prepare Merged Configs') {
-            when {
-                expression { return params.MERGE_CONFIGS }
-            }
-            steps {
-                script {
-                    def configFiles = env.CONFIG_FILES.split(",")
-                    
-                    configFiles.each { configFilePath ->
-                        def configFileName = configFilePath.trim().split("/")[-1]
-                        def configNameWithoutExt = configFileName.replaceAll("\\.[jJ][sS][oO][nN]\$", "")
-                        
-                        echo "Preparing merged configuration for: ${configNameWithoutExt}"
-                        
-                        // Run the Python script for each config file to create merged files
-                        // Note: We're only creating the merged files here, not updating or deploying
-                        // Make sure to activate the virtual environment before running the script
-                        sh """
-                            # Activate virtual environment
-                            . ${env.VENV_PATH}/bin/activate
-                            
-                            # Run the merge script
-                            python3 ${env.SCRIPTS_DIR}/merge_appconfig.py --config-file ${configFilePath} --app-name ${configNameWithoutExt} --env-name ${env.BRANCH_NAME} --profile-name ${configNameWithoutExt} --debug --force-create
-                        """
-                    }
-                }
-            }
-        }
+		stage('Prepare Merged Configs') {
+		    when {
+		        expression { return params.MERGE_CONFIGS }
+		    }
+		    steps {
+		        script {
+		            def configFiles = env.CONFIG_FILES.split(",")
+		            
+		            configFiles.each { configFilePath ->
+		                def configFileName = configFilePath.trim().split("/")[-1]
+		                def configNameWithoutExt = configFileName.replaceAll("\\.[jJ][sS][oO][nN]\$", "")
+		                
+		                echo "Preparing merged configuration for: ${configNameWithoutExt}"
+		                
+		                // Run the Python script for each config file to create merged files
+		                // The script will now automatically preserve existing values and metadata
+		                sh """
+		                    # Activate virtual environment
+		                    . ${env.VENV_PATH}/bin/activate
+		                    
+		                    # Run the merge script
+		                    python3 ${env.SCRIPTS_DIR}/merge_appconfig.py \
+		                        --config-file ${configFilePath} \
+		                        --app-name ${configNameWithoutExt} \
+		                        --env-name ${env.BRANCH_NAME} \
+		                        --profile-name ${configNameWithoutExt} \
+		                        --debug \
+		                        --force-create
+		                """
+		            }
+		        }
+		    }
+		}
         
         stage('Initialize Terraform') {
             steps {
