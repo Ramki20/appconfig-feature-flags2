@@ -157,6 +157,7 @@ def create_merged_config(github_config, aws_config, current_version):
         "values": {},
         "version": "1"  # AWS AppConfig Feature Flags requires version as a string
     }
+    logger.info(f"merged_config-1: {merged_config}")
     
     # Track changes for logging
     added_flags = set(github_config["flags"].keys()) - set(aws_config.get("flags", {}).keys())
@@ -174,6 +175,9 @@ def create_merged_config(github_config, aws_config, current_version):
             # For new flags not in AWS AppConfig, use default values from GitHub
             logger.info(f"Adding new flag with default values: {flag_name}")
             merged_config["values"][flag_name] = github_config["values"].get(flag_name, {"enabled": "false"}).copy()
+
+
+    logger.info(f"merged_config-2: {merged_config}")
     
     # Copy any top-level metadata fields from AWS AppConfig
     for key in aws_config:
@@ -193,6 +197,8 @@ def create_merged_config(github_config, aws_config, current_version):
     
     # Update the version field
     logger.info(f"Configuration version updated from {current_version} to \"1\" (AWS requires version as a string value)")
+    
+    logger.info(f"merged_config-3: {merged_config}")
     
     # Perform a final validation check
     if len(merged_config["flags"]) != len(merged_config["values"]):
