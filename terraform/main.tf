@@ -15,10 +15,6 @@ locals {
     )
   }
   
-  resource "random_id" "version_id" {
-	 byte_length = 4
-  }  
-  
   # Process each file to ensure proper version field
   fixed_contents = {
     for idx, path in local.config_content_paths : idx => {
@@ -113,6 +109,10 @@ resource "terraform_data" "debug_fixed_content" {
     }
   }
 }
+
+resource "random_id" "version_id" {
+   byte_length = 4
+}  
 
 # Hosted Configuration Version for each configuration profile
 resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
