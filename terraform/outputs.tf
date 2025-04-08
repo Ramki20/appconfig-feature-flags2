@@ -11,8 +11,7 @@ output "environment_ids" {
 output "debug_fixed_content" {
   description = "Debug information about fixed content"
   value = {
-    for idx, content in local.fixed_contents :
-    idx => "Flags=${content.flags}, Values=${content.values}"
+    for k, v in terraform_data.debug_fixed_content : k => v.output
   }
 }
 

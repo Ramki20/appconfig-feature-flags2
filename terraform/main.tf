@@ -81,10 +81,16 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   }
 }
 
-# Debug the fixed content
+# Debug the fixed content with more details
 resource "terraform_data" "debug_fixed_content" {
   for_each = local.fixed_contents
-  input    = "Fixed content for file ${each.key}: flags=${each.value.flags}, values=${each.value.values}"
+  input    = {
+    file_index = each.key
+    flags_count = length(each.value.flags)
+    values_count = length(each.value.values)
+    flag_names = keys(each.value.flags)
+    value_names = keys(each.value.values)
+  }
 }
 
 # Hosted Configuration Version for each configuration profile
