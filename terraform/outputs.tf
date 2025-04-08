@@ -12,7 +12,7 @@ output "debug_fixed_content" {
   description = "Debug information about fixed content"
   value = {
     for idx, content in local.fixed_contents :
-    idx => "Flags=${length(content.flags)}, Values=${length(content.values)}"
+    idx => "Flags=${content.flags}, Values=${content.values}"
   }
 }
 
