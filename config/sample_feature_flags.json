@@ -67,6 +67,9 @@
     },
     "request_summary_card": {
       "name": "request_summary_card"
+    },
+    "select_withdrawal_reason2": {
+      "name": "select_withdrawal_reason2"
     }
   },
   "values": {
@@ -133,6 +136,9 @@
       "enabled": true
     },
     "request_summary_card": {
+      "enabled": true
+    },
+    "select_withdrawal_reason2": {
       "enabled": true
     }
   },
