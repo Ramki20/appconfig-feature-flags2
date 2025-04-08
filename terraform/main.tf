@@ -128,13 +128,6 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
 }
 EOT
 
-  # Add lifecycle block to ignore changes to content
-  lifecycle {
-    ignore_changes = [
-      content
-    ]
-  }
-
 }
 
 # Note: Deployment resource has been removed to allow deployment through Angular UI instead
