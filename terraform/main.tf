@@ -116,7 +116,8 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
     
   application_id           = aws_appconfig_application.feature_flags_app[each.key].id
   configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
-  description              = "Feature flags configuration version ${var.config_version}"
+  description              = "Feature flags version ${var.config_version} with ${length(local.fixed_contents[each.key].flags)} flags"
+    
   content_type             = "application/json"
     
   # Use raw JSON format with direct interpolation and version as a string
