@@ -15,6 +15,10 @@ locals {
     )
   }
   
+  resource "random_id" "version_id" {
+	 byte_length = 4
+  }  
+  
   # Process each file to ensure proper version field
   fixed_contents = {
     for idx, path in local.config_content_paths : idx => {
@@ -116,7 +120,7 @@ resource "aws_appconfig_hosted_configuration_version" "feature_flags_version" {
     
   application_id           = aws_appconfig_application.feature_flags_app[each.key].id
   configuration_profile_id = aws_appconfig_configuration_profile.feature_flags_profile[each.key].configuration_profile_id
-  description              = "Feature flags version ${var.config_version} with ${length(local.fixed_contents[each.key].flags)} flags"
+  description              = "Feature flags version ${var.config_version} with ${random_id.version_id.hex}"
     
   content_type             = "application/json"
     
