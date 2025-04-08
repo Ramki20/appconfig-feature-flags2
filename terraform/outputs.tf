@@ -8,6 +8,14 @@ output "environment_ids" {
   value       = { for idx, env in aws_appconfig_environment.feature_flags_env : aws_appconfig_application.feature_flags_app[idx].name => env.id }
 }
 
+output "debug_fixed_content" {
+  description = "Debug information about fixed content"
+  value = {
+    for idx, content in local.fixed_contents :
+    idx => "Flags=${length(content.flags)}, Values=${length(content.values)}"
+  }
+}
+
 output "configuration_profile_ids" {
   description = "Map of AWS AppConfig Configuration Profile IDs"
   value       = { for idx, profile in aws_appconfig_configuration_profile.feature_flags_profile : aws_appconfig_application.feature_flags_app[idx].name => profile.id }
