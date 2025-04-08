@@ -81,15 +81,32 @@ resource "aws_appconfig_configuration_profile" "feature_flags_profile" {
   }
 }
 
-# Debug the fixed content with more details
+# Comprehensive debug for fixed content including attributes and metadata
 resource "terraform_data" "debug_fixed_content" {
   for_each = local.fixed_contents
-  input    = {
+  
+  input = {
     file_index = each.key
-    flags_count = length(each.value.flags)
-    values_count = length(each.value.values)
-    flag_names = keys(each.value.flags)
-    value_names = keys(each.value.values)
+    counts = {
+      flags = length(each.value.flags)
+      values = length(each.value.values)
+    }
+    flags_details = {
+      for flag_name, flag_data in each.value.flags : flag_name => {
+        name = flag_data.name
+        has_attributes = contains(keys(flag_data), "attributes")
+        attributes = try(flag_data.attributes, {})
+      }
+    }
+    values_details = {
+      for value_name, value_data in each.value.values : value_name => {
+        enabled = try(value_data.enabled, null)
+        # Dynamically include all other properties
+        metadata = {
+          for k, v in value_data : k => v if k != "enabled"
+        }
+      }
+    }
   }
 }
 

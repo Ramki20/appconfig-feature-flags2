@@ -9,9 +9,9 @@ output "environment_ids" {
 }
 
 output "debug_fixed_content" {
-  description = "Debug information about fixed content"
+  description = "Detailed debug information about fixed content including attributes and metadata"
   value = {
-    for k, v in terraform_data.debug_fixed_content : k => v.output
+    for k, v in terraform_data.debug_fixed_content : k => jsondecode(jsonencode(v.output))
   }
 }
 
